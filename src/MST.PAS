@@ -41,6 +41,20 @@ Type
   TMSTApplication = Object(TApplication)
 {    MSTDisk:PMSTDisk;}
     Frec : TFormRec;
+  {
+  Const
+    Frec : TFormRec = (
+      Ssize :3;
+      Gap1  :0;
+      Gap2  :0;
+      SCount:5;
+      TCount:80;
+      Side  :0;
+      Track :0;
+      Sect  :0;
+      Interl:1
+    );
+  }
     {$ifdef fpc}
     FileName:ShortString;
     DiskName:ShortString;
@@ -56,6 +70,7 @@ Type
     Procedure HandleEvent(Var Event:TEvent);Virtual;
     Procedure InitMenuBar; Virtual;
     Procedure InitStatusLine;Virtual;
+    Procedure Idle;Virtual;
     Procedure DoAboutBox;
     Procedure FormatDisk;
     Procedure ReadDisk;
@@ -85,9 +100,9 @@ Begin
     NewSubMenu('~F~ile', hcNoContext, NewMenu(
     StdFileMenuItems(Nil)),
     NewSubMenu('~D~isc', hcNoContext, NewMenu(
-    NewItem('~R~ead', '', kbNoKey, Cmreaddisc, hcNoContext,
-    NewItem('~W~rite', '', kbNoKey, Cmwritedisc, hcNoContext,
-    NewItem('~F~ormat', '', kbNoKey, Cmformatdisc, hcNoContext,
+    NewItem('~R~ead', '', kbNoKey, cmReadDisc, hcNoContext,
+    NewItem('~W~rite', '', kbNoKey, cmWriteDisc, hcNoContext,
+    NewItem('~F~ormat', '', kbNoKey, cmFormatDisc, hcNoContext,
     NewItem('~L~ist disk', '', kbNoKey, cmListDisk, hcNoContext,
     Nil))))),
     NewSubMenu('~O~ptions', hcNoContext, NewMenu(
@@ -120,7 +135,8 @@ Begin
     StdStatusKeys(Nil))))),
     NewStatusDef(hcView, hcView,
     NewStatusKey('~F4~ Hex/Asc/Dmp', kbF4, cmHexMode,
-    StdStatusKeys(nil)),  Nil))));
+    NewStatusKey('~Shift+F2~ Wrap', kbShiftF2, cmUnWrap,
+    StdStatusKeys(nil))),  Nil))));
 End;
 
 Procedure TMSTApplication.HandleEvent(Var Event:TEvent);
@@ -237,11 +253,14 @@ end;
 
 Begin
   FillChar(Frm_Vec,512,0);
-
+  If DiskName[0] = #0 Then
+     SelectDriveImage;
   If DiskName[0] > #1 Then
      MSTDisk:= New(PMicroDOSDiskImage, Init(DiskName, Frec))
-  else
-     MSTDisk:= New(PMicroDOSDisk, Init(DiskName[1], Frec));
+  Else If DiskName[0] > #0 Then
+     MSTDisk:= New(PMicroDOSDisk, Init(DiskName[1], Frec))
+  Else
+     Exit;
 
   { Тут вам не Си! Злобный Паскаль ругается      }
   {
@@ -367,12 +386,17 @@ Begin
       Exit;
   End;
 
-  Assign(F, FileName);
-  ReWrite(F);
+  If DiskName[0] = #0 Then
+     SelectDriveImage;
   If DiskName[0] > #1 Then
      MSTDisk:= New(PMicroDOSDiskImage, Init(DiskName, Frec))
-  else
-     MSTDisk:= New(PMicroDOSDisk, Init(DiskName[1], Frec));
+  Else If DiskName[0] > #0 Then
+     MSTDisk:= New(PMicroDOSDisk, Init(DiskName[1], Frec))
+  Else
+     Exit;
+
+  Assign(F, FileName);
+  ReWrite(F);
 
   R.Assign( 2, 4, 38, 5 );
   GV1 := New( PGrowView, Init( R, (Frec.TCount ShL 1)-1 ));
@@ -462,12 +486,17 @@ Begin
     MessageBox(#3'File not found!', nil, mfError and mfOKButton);
     Exit;
   End;
-  Assign(F,FileName);
-  Reset(F);
+  If DiskName[0] = #0 Then
+     SelectDriveImage;
   If DiskName[0] > #1 Then
      MSTDisk:= New(PMicroDOSDiskImage, Init(DiskName, Frec))
-  else
-     MSTDisk:= New(PMicroDOSDisk, Init(DiskName[1], Frec));
+  Else If DiskName[0] > #0 Then
+     MSTDisk:= New(PMicroDOSDisk, Init(DiskName[1], Frec))
+  Else
+     Exit;
+
+  Assign(F,FileName);
+  Reset(F);
 
   R.Assign( 2, 4, 38, 5 );
   GV1 := New( PGrowView, Init( R, (Frec.TCount ShL 1)-1 ));
@@ -540,6 +569,20 @@ Var
   Seg, Ofs:Word;
 {$endif}
 {$endif}
+{
+Const
+  defFrec : TFormRec = (
+    Ssize :3;
+    Gap1  :0;
+    Gap2  :0;
+    SCount:5;
+    TCount:80;
+    Side  :0;
+    Track :0;
+    Sect  :0;
+    Interl:1
+  );
+}
 Begin
   Inherited Init;
 //  DiskName:='ESL_00.kdi';
@@ -581,7 +624,8 @@ Begin
        DiskName:=ParamStr(B);
        ListDisk;
        Break;
-    End
+    End;
+    Dec(B)
   End;
 End;
 
@@ -607,11 +651,14 @@ var
 {   Catalog:TCatalog; }
    MSTDisk:PMSTDisk;
 begin
+  If DiskName[0] = #0 Then
+     SelectDriveImage;
   If DiskName[0] > #1 Then
      MSTDisk:= New(PMicroDOSDiskImage, Init(DiskName, Frec))
-  else
-     MSTDisk:= New(PMicroDOSDisk, Init(DiskName[1], Frec));
-
+  Else If DiskName[0] > #0 Then
+     MSTDisk:= New(PMicroDOSDisk, Init(DiskName[1], Frec))
+  Else
+     Exit;
   { MSTDisk^.ReadDir(Catalog); }
   LeftWindow:=New(PMSTShortWindow, Init(MSTDisk));
 
@@ -647,6 +694,15 @@ Begin
   end;
   {$endif}
   Inherited Done;
+End;
+
+Procedure TMSTApplication.Idle;
+Begin
+  Inherited Idle;
+  If Message(Application, evBroadCast, cmMSTDiskOpen, nil) <> Nil Then
+    DisableCommands([cmReadDisc,cmWriteDisc,cmListDisk,cmFormatDisc,cmSelectDriveA,cmSelectDriveB,cmSelectDriveImage])
+  Else
+    EnableCommands([cmReadDisc,cmWriteDisc,cmListDisk,cmFormatDisc,cmSelectDriveA,cmSelectDriveB,cmSelectDriveImage]);
 End;
 
 Var

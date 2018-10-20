@@ -9,8 +9,14 @@
 
 Unit DosDlg;
 Interface
-Uses SysUtils, Stddlg, Objects, Views, Drivers, Dialogs, Dos;
+Uses {$Ifdef fpc} SysUtils, {$Endif} Stddlg, Objects, Views, Drivers, Dialogs, Dos;
 {---------------------------------------------------------}
+
+{$Ifndef fpc}
+Type
+  ShortString = String;
+  Sw_Integer  = Integer;
+{$Endif}
 
 Type
   TFileNames = Array[0..1] Of ShortString;
@@ -19,6 +25,7 @@ Type
   PDOSFileList = ^TDOSFileList;
   TDOSFileList = Object(TFileList)
     Procedure Draw; Virtual;
+    Function GetPalette: PPalette; virtual;
     Procedure HandleEvent(Var Event: TEvent); Virtual;
     procedure GetData(var Rec); virtual;
     constructor Init(var Bounds: TRect; AScrollBar: PScrollBar);
@@ -45,8 +52,10 @@ Type
     Procedure HandleEvent(Var Event:TEvent); Virtual;
     Procedure ChangeDir; virtual;
     Procedure ViewFile; virtual;
+    Procedure ViewFileEx; virtual;
     Procedure CopyFile; virtual;
     Procedure AddFile(FileNames:TFileNames); virtual;
+    Function GetPalette: PPalette; virtual;
   End;
   {---------------------------------------------------------}
 Type
@@ -67,7 +76,12 @@ Type
   {---------------------------------------------------------}
 Implementation
 
-Uses App, MsgBox, FVConsts, FViewer, MSTConst;
+Uses App, MsgBox, {$Ifdef fpc} FVConsts, FViewer, {$else} Service, {$Endif} MSTConst, part3msx;
+
+{$Ifndef fpc}
+Const
+  MaxFName = 255;
+{$Endif}
 
 Type
   TDOSSearchRec = packed record
@@ -89,14 +103,26 @@ Begin
   Begin
     If (Str[2] = ':') And (Str[3] = '\') Then
     Begin
+      {$ifdef fpc}
       TruncPathStr:=Copy(Str, 1, 3) + '...' + RightStr(Str, MaxLength - 6);
+      {$else}
+      TruncPathStr:=Copy(Str, 1, 3) + '...' + Copy(Str, 6, MaxLength - 6);
+      {$Endif}
     End
     Else
     Begin
       If (Str[1] = '\') And (Str[2] = '\') Then
+        {$ifdef fpc}
         TruncPathStr:=Copy(Str, 1, 2) + '...' + RightStr(Str, MaxLength - 5)
+        {$else}
+        TruncPathStr:=Copy(Str, 1, 2) + '...' + Copy(Str, 5, MaxLength - 5) { TODO BP }
+        {$Endif}
       Else
+        {$ifdef fpc}
         TruncPathStr:=RightStr(Str, MaxLength);
+        {$else}
+        TruncPathStr:=Copy(Str, 1, MaxLength); { TODO BP }
+        {$Endif}
     End
   End
   Else
@@ -120,7 +146,9 @@ end;
 
 const
   ListSeparator=';';
-
+{$ifndef fpc}
+  DirSeparator = '\';
+{$endif}
   function uppername(const s : string) : string;
   var
     i  : Sw_integer;
@@ -140,7 +168,11 @@ const
   end;
 
 {---------------------------------------------------------}
+{$Ifdef fpc}
 function TDOSFileCollection.Compare(Key1, Key2: Pointer): LongInt;
+{$else}
+function TDOSFileCollection.Compare(Key1, Key2: Pointer): Integer;
+{$Endif}
 Var
   Dir2,Dir1   : DirStr;
   Name2,Name1 : NameStr;
@@ -158,8 +190,13 @@ begin
   else Compare := -1;}
   Else
   Begin
+    {$Ifdef fpc}
     FSplit(UpperCase(PDOSSearchRec(Key1)^.Name),Dir1,Name1,Ext1);
     FSplit(UpperCase(PDOSSearchRec(Key2)^.Name),Dir2,Name2,Ext2);
+    {$Else}
+    FSplit(strupr(PDOSSearchRec(Key1)^.Name),Dir1,Name1,Ext1);
+    FSplit(strupr(PDOSSearchRec(Key2)^.Name),Dir2,Name2,Ext2);
+    {$Endif}
     If (PDOSSearchRec(Key2)^.Attr And Directory <> 0) And
        (PDOSSearchRec(Key1)^.Attr And Directory <> 0) Then
       If Name1>Name2 Then Compare:=1 Else Compare:=-1
@@ -188,6 +225,48 @@ begin
    PDOSSearchRec(Rec):=PDOSSearchRec(List^.At(Focused));
 end;
 {---------------------------------------------------------}
+Function TDOSFileList.GetPalette: PPalette;
+(*
+                   1    2    3    4    5
+                ÉÍÍÍÍÑÍÍÍÍÑÍÍÍÍÑÍÍÍÍÑÍÍÍÍ»
+  CListViewer   º 26 ³ 26 ³ 27 ³ 28 ³ 29 º
+                ÈÍÍÑÍÏÍÍÑÍÏÍÍÑÍÏÍÍÑÍÏÍÍÑÍ¼
+  ActiveÄÄÄÄÄÄÄÄÄÄÄÙ    ³    ³    ³    ÀÄÄÄDivider
+  InactiveÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ    ³    ÀÄÄÄÄÄÄÄÄSelected
+  FocusedÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+
+                  1    2    3    4    5    6    7    8
+               ÉÍÍÍÍÑÍÍÍÍÑÍÍÍÍÑÍÍÍÍÑÍÍÍÍÑÍÍÍÍÑÍÍÍÍÑÍÍÍÍ»
+  CGrayWindow  º 24 ³ 25 ³ 26 ³ 27 ³ 28 ³ 29 ³ 30 ³ 31 º
+               ÌÍÍÍÍÏÍÍÍÍÏÍÍÍÍÏÍÍÍÍÏÍÍÍÍÏÍÍÍÍÏÍÍÍÍÏÍÍÍÍ¹
+               ÌÍÍÍÍÑÍÍÍÍÑÍÍÍÍÑÍÍÍÍÑÍÍÍÍÑÍÍÍÍÑÍÍÍÍÑÍÍÍÍ¹
+  CCyanWindow  º 16 ³ 17 ³ 18 ³ 19 ³ 20 ³ 21 ³ 22 ³ 23 º
+               ÌÍÍÍÍÏÍÍÍÍÏÍÍÍÍÏÍÍÍÍÏÍÍÍÍÏÍÍÍÍÏÍÍÍÍÏÍÍÍÍ¹
+               ÌÍÍÍÍÑÍÍÍÍÑÍÍÍÍÑÍÍÍÍÑÍÍÍÍÑÍÍÍÍÑÍÍÍÍÑÍÍÍÍ¹
+  CBlueWindow  º  8 ³  9 ³ 10 ³ 11 ³ 12 ³ 13 ³ 14 ³ 15 º
+               ÈÍÍÑÍÏÍÍÑÍÏÍÍÑÍÏÍÍÑÍÏÍÍÑÍÏÍÍÑÍÏÍÍÑÍÏÍÍÑÍ¼
+  Frame PassiveÄÄÄÙ    ³    ³    ³    ³    ³    ³    ÀÄÄÄReserved
+  Frame ActiveÄÄÄÄÄÄÄÄÄÙ    ³    ³    ³    ³    ÀÄÄÄÄÄÄÄÄScroller
+                            ³    ³    ³    ³              Selected Text
+  Frame IconÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ    ³    ³    ÀÄÄÄÄÄÄÄÄÄÄÄÄÄScroller Normal
+                                 ³    ³                   Text
+  ScrollBar PageÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ    ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄScrollBar
+                                                          Reserved
+
+*)
+Const
+  P:String[Length(CListViewer) + 1] = #1#2#5#6#2 + #1;
+Begin
+  GetPalette := @P;
+End;
+{---------------------------------------------------------}
+Function TDOSShortWindow.GetPalette:PPalette;
+Const
+  P:String[Length(CBlueWindow)] = CBlueWindow;
+Begin
+  GetPalette := @P;
+End;
+{---------------------------------------------------------}
 procedure TDOSShortWindow.ChangeDir;
 Var
   P:PDOSSearchRec;
@@ -206,7 +285,11 @@ begin
       isRootDir:=True;
       CurDirName:=CurDir;
       While CurDirName[Length(CurDirName)] = '\' do
+        {$Ifdef fpc}
         CurDirName:=LeftStr(CurDirName, Length(CurDirName) - 1);
+        {$Else}
+        CurDirName:=Copy(CurDirName, 1, Length(CurDirName) - 1);
+        {$EndIf}
       CurDirName:=ExtractFileName(CurDirName);
       CurDirName:=UpperCase(CurDirName);
     end;
@@ -370,6 +453,43 @@ begin
       H := New(PFileWindow, Init(FileName, P^.Name, false));
       {$endif}
       Application^.InsertWindow(H);
+    end;
+end;
+
+procedure TDOSShortWindow.ViewFileEx;
+Var
+  FileName:String;
+  H: PFileWindow;
+  P:PDOSSearchRec;
+  BASFile:PBASFile;
+  BASFileName:String;
+begin
+  mFileList^.GetData(P);
+
+  FileName:= CurDir;
+
+  While FileName[Length(FileName)] = '\' do
+    FileName:=LeftStr(FileName, Length(FileName) - 1);
+  FileName:=FileName + '\' + P^.Name;
+
+  If P^.Attr and Directory = 0 Then
+    If FileExists(FileName) Then
+    begin
+      {$ifdef fpc}
+      If UpperCase(RightStr(FileName, 4)) = '.BAS' Then
+      Begin
+         BASFile:=New(PBASFile, Init(nil, FileName));
+         BASFileName:=GetTempFileName;
+         BASFile^.WriteBASFile(BASFileName);
+         H := New(PFileWindow, Init(BASFileName, Trim(P^.Name), false));
+         Application^.InsertWindow(H)
+      End
+      Else
+         ViewFile;
+      {$else}
+      H := New(PFileWindow, Init(FileName, P^.Name, false));
+      Application^.InsertWindow(H);
+      {$endif}
     end;
 end;
 
@@ -587,6 +707,56 @@ BEGIN
        Then Begin
          Color := GetColor(4);                        { Selected color }
          SCOff := 2;                                  { Colour offset=2 }
+       End Else Begin If State and sfActive = 0 Then Color := GetColor(1) Else
+         Color := GetColor(2);                        { Normal Color }
+         SCOff := 4;                                  { Colour offset=4 }
+       End;
+      MoveChar(B[CurCol], ' ', Color, ColWidth);     { Clear buffer }
+       If (Item < Range) Then Begin                   { Within text range }
+         Text := GetText(Item, ColWidth + Indent);    { Fetch text }
+         Text := Copy(Text, Indent, ColWidth);        { Select right bit }
+         MoveStr(B[CurCol+1], Text, Color);           { Transfer to buffer }
+         If ShowMarkers Then Begin
+           WordRec(B[CurCol]).Lo := Byte(
+             SpecialChars[SCOff]);                        { Set marker character }
+           WordRec(B[CurCol+ColWidth-2]).Lo := Byte(
+             SpecialChars[SCOff+1]);                        { Set marker character }
+         End;
+       End;
+       If State and sfActive <> 0 Then
+         MoveChar(B[CurCol+ColWidth-1], #179,
+           GetColor(5), 1)                             { Put centre line marker }
+       Else
+         MoveChar(B[CurCol+ColWidth-1], #179,
+           GetColor(6), 1);                            { Put centre line marker }
+     End;
+     WriteLine(0, I, Size.X, 1, B);                 { Write line to screen }
+   End;
+END;
+(*
+PROCEDURE TDOSLongFileList.Draw;
+VAR  I, J, ColWidth, Item, Indent, CurCol: Sw_Integer;
+     Color: Word; SCOff: Byte;
+     Text: String; B: TDrawBuffer;
+BEGIN
+   ColWidth := Size.X DIV NumCols + 1;                { Calc column width }
+   If (HScrollBar = Nil) Then Indent := 0 Else        { Set indent to zero }
+     Indent := HScrollBar^.Value;                     { Fetch any indent }
+   For I := 0 To Size.Y - 1 Do Begin                  { For each line }
+     For J := 0 To NumCols-1 Do Begin                 { For each column }
+       Item := J*Size.Y + I + TopItem;                { Process this item }
+       CurCol := J*ColWidth;                          { Current column }
+       If (State AND (sfSelected + sfActive) =
+       (sfSelected + sfActive)) AND (Focused = Item)  { Focused item }
+       AND (Range > 0) Then Begin
+       If IsSelected(Item) Then Color:=(GetColor(4) and $0F) + (GetColor(3) and $F0)  Else
+         Color := GetColor(3);                        { Focused colour }
+         SetCursor(CurCol+1,I);                       { Set the cursor }
+         SCOff := 0;                                  { Zero colour offset }
+       End Else If (Item < Range) AND IsSelected(Item){ Selected item }
+       Then Begin
+         Color := GetColor(4);                        { Selected color }
+         SCOff := 2;                                  { Colour offset=2 }
        End Else Begin
          Color := GetColor(2);                        { Normal Color }
          SCOff := 4;                                  { Colour offset=4 }
@@ -609,6 +779,7 @@ BEGIN
      WriteLine(0, I, Size.X, 1, B);                 { Write line to screen }
    End;
 END;
+*)
 {---------------------------------------------------------}
 
 Constructor TDOSShortWindow.Init(Dir, Mask: ShortString);
@@ -650,6 +821,11 @@ Begin
         kbCtrlR:
         Begin
           mFileList^.ReadDirectory(CurDir + CurMask);
+          ClearEvent(Event);
+        End;
+        kbShiftF3:
+        Begin
+          ViewFileEx;
           ClearEvent(Event);
         End;
       end;
@@ -748,8 +924,6 @@ Var
   FileName:String;
 {  Rslt:Word; }
 begin
-//  MessageBox(FileNames[0], nil, 0);
-//  MessageBox(FileNames[1], nil, 0);
 
   FileName:= CurDir;
 
@@ -791,12 +965,13 @@ Begin
   R.A.X:=R.B.X div 2;
   R.B.Y:=R.B.Y - 1;
 
-{  Palette:=wpBlueWindow;}
-
   While Dir[Length(Dir)] = '\' do
     Dir:=LeftStr(Dir, Length(Dir) - 1);
 
   TDialog.Init(R, TruncPathStr(Dir, R.B.X - R.A.X - 16));
+
+{  Palette:=wpCyanWindow; }
+
   Dir:=Dir + '\';
 
   FSplit(Dir, CurDir, name, ext);

@@ -103,6 +103,11 @@ const
 {  BlockCount : Word = 390;}
   BlockCount : Word = 394;
 
+{$ifndef fpc}
+Type
+  ShortString = String;
+{$endif}
+
 Type
   PMSTDisk = ^TMSTDisk;
   TMSTDisk = Object
@@ -110,21 +115,22 @@ Type
     _Frec:TFormRec;
     Constructor Init;
     Destructor Done;virtual;
-    Function FormatTrack(Frec:TFormRec):Word;Virtual;  {$Ifdef UseAbstract} Abstract; {$endif}   { Форматирование трека, с параметрами определюсь позже }
-    Function FormatDisk:Byte;Virtual;                  {$Ifdef UseAbstract} Abstract; {$endif}   { Форматирование диска }
-    Function ReadDisk:Byte;Virtual;                    {$Ifdef UseAbstract} Abstract; {$endif}
-    Function WriteDisk:Byte;Virtual;                   {$Ifdef UseAbstract} Abstract; {$endif}
+    Function FormatTrack(Frec:TFormRec):Word;Virtual;  {$Ifdef UseAbstract} { Abstract; } {$endif}
+    { Форматирование трека, с параметрами определюсь позже }
+    Function FormatDisk:Byte;Virtual;                  {$Ifdef UseAbstract} { Abstract; } {$endif}   { Форматирование диска }
+    Function ReadDisk:Byte;Virtual;                    {$Ifdef UseAbstract} { Abstract; } {$endif}
+    Function WriteDisk:Byte;Virtual;                   {$Ifdef UseAbstract} { Abstract; } {$endif}
     Function SeekTrack(Frec:TFormRec):Word;Virtual;
-    Function ReadSect(Frec:TFormRec;Var Buf:TBufType):Word;Virtual;              {$Ifdef UseAbstract} Abstract; {$endif}
-    Function WriteSect(Frec:TFormRec;Var Buf:TBufType):Word;Virtual;             {$Ifdef UseAbstract} Abstract; {$endif}
-    Procedure ResetDisk;Virtual;                                                 {$Ifdef UseAbstract} Abstract; {$endif}
-    Function GetErrorDescription(Track, Sect, ErrorNumber:Byte):String;Virtual;  {$Ifdef UseAbstract} Abstract; {$endif}
-    Procedure SetBlock(Block:Word;Ofs:Byte);virtual;                             {$Ifdef UseAbstract} Abstract; {$endif}
+    Function ReadSect(Frec:TFormRec;Var Buf:TBufType):Word;Virtual;              {$Ifdef UseAbstract} { Abstract; } {$endif}
+    Function WriteSect(Frec:TFormRec;Var Buf:TBufType):Word;Virtual;             {$Ifdef UseAbstract} { Abstract; } {$endif}
+    Procedure ResetDisk;Virtual;                                                 {$Ifdef UseAbstract} { Abstract; } {$endif}
+    Function GetErrorDescription(Track, Sect, ErrorNumber:Byte):String;Virtual;  {$Ifdef UseAbstract} { Abstract; } {$endif}
+    Procedure SetBlock(Block:Word;Ofs:Byte);virtual;                             {$Ifdef UseAbstract} { Abstract; } {$endif}
 {    Function ReadDir:TCatalog;virtual; Turbo Pascal так не умеет!}
-   Function ReadDir(var Catalog:TCatalog):Boolean;virtual;                       {$Ifdef UseAbstract} Abstract; {$endif}
-   Procedure WriteDir(Catalog:TCatalog);virtual;                                 {$Ifdef UseAbstract} Abstract; {$endif}
-   Procedure ReadDpb;virtual;                                                    {$Ifdef UseAbstract} Abstract; {$endif}
-   Function GetDiskNameEx:ShortString;virtual;                                   {$Ifdef UseAbstract} Abstract; {$endif}
+   Function ReadDir(var Catalog:TCatalog):Boolean;virtual;                       {$Ifdef UseAbstract} { Abstract; } {$endif}
+   Procedure WriteDir(Catalog:TCatalog);virtual;                                 {$Ifdef UseAbstract} { Abstract; } {$endif}
+   Procedure ReadDpb;virtual;                                                    {$Ifdef UseAbstract} { Abstract; } {$endif}
+   Function GetDiskNameEx:ShortString;virtual;                                   {$Ifdef UseAbstract} { Abstract; } {$endif}
   End;
 
 Type
@@ -215,7 +221,7 @@ Windows,
 {$endif}
 {$endif}
 
-Service, SysUtils;
+Service {$ifdef fpc}, SysUtils {$endif};
 
 Constructor TMSTDisk.Init;
 Begin
@@ -299,7 +305,8 @@ Begin
     'B': lpFileName:='\\.\fdraw1';
     Else DiskAddr:=0;
   End;
-  DataRate:= FD_RATE_300K; { Проверить на реальном дисководе! // 0=500Kbps (HD), 1=300Kbps (DD 5.25"), 2=250Kbps (DD 3.5"), 3=1Mbps (ED) }
+  DataRate:= FD_RATE_300K;
+  { Проверить на реальном дисководе! // 0=500Kbps (HD), 1=300Kbps (DD 5.25"), 2=250Kbps (DD 3.5"), 3=1Mbps (ED) }
   hMST:=CreateFile(lpFileName, GENERIC_READ or GENERIC_WRITE, 0, nil, OPEN_EXISTING, 0, 0);
   { if hMST = INVALID_HANDLE_VALUE Then begin end }
   DeviceIoControl(hMST, IOCTL_FD_SET_DATA_RATE, @DataRate, SizeOf(DataRate), nil, 0, dwRet, nil);
@@ -343,12 +350,13 @@ begin
 end;
 
 Function TMicroDOSDisk.SeekTrack(Frec:TFormRec):Word;
-Var
 {$ifdef fpc}
 {$ifdef win32}
+Var
   _Flag     :BOOL;
   dwRet     :LongWord;
 {$else}
+Var
   Regs:TRealRegs;
 {$endif}
 {$endif}
@@ -416,6 +424,7 @@ Var
   Disk  : Byte;
 {$endif}
 {$else}
+  Block : Array[1..128,0..3] Of Byte;
   Bs,Bo : Word;
   S,Err : Byte;
   Side,Track:Byte;
@@ -475,13 +484,15 @@ Begin
 
   For I:=0 To Frec.SCount - 1 Do
   Begin
+//    ph:=(PFD_ID_HEADER(@pfp^.Header) + I * sizeof(FD_ID_HEADER));
     ph:=(@pfp^.Header + I * sizeof(FD_ID_HEADER));
     ph^.cyl := Frec.Track ShR 1;
     ph^.head := pfp^.phead;
     ph^.sector := 1 + ((I + ph^.cyl * (pfp^.sectors - 1)) mod pfp^.Sectors);
     ph^.size := pfp^.size;
   End;
-  _Flag:=DeviceIoControl(hMST, IOCTL_FDCMD_FORMAT_TRACK, pfp, sizeof(FD_FORMAT_PARAMS) + sizeof(FD_ID_HEADER) * (pfp^.Sectors - 1), nil, 0, @dwRet, nil);
+  _Flag:=DeviceIoControl(hMST, IOCTL_FDCMD_FORMAT_TRACK, pfp,
+                               sizeof(FD_FORMAT_PARAMS) + sizeof(FD_ID_HEADER) * (pfp^.Sectors - 1), nil, 0, @dwRet, nil);
 
   FreeMem(pfp, sizeof(FD_FORMAT_PARAMS) + sizeof(FD_ID_HEADER) * (Frec.SCount - 1));
 
@@ -541,6 +552,7 @@ Var
   Err: Byte;
 {$endif}
 {$else}
+  _Flag:Byte;
   Disk: Byte;
   Segbuf,Ofsbuf : Word;
   Err: Byte;
@@ -642,6 +654,7 @@ Var
   Disk          : Byte;
 {$endif}
 {$else}
+  _Flag         : Byte;
   Err           : Byte;
   Segbuf,Ofsbuf : Word;
   Disk          : Byte;
@@ -806,7 +819,11 @@ begin
       {$endif}
       End
       Else
+      {$ifndef fpc}
+        { TODO BP }
+      {$else}
         FillChar(_pblock(pointer(block)+(1024 * b))^, 1024, $E5);
+      {$endif}
     end;
   End;
   ReadBlock:=Errc;
@@ -944,7 +961,7 @@ begin
   Pos:=(LongInt(Frec.Track) * LongInt(Frec.Scount) + LongInt(Frec.Sect-1)) * 1024;
   {$ifndef fpc}
   {$I-}
-//  Seek(F, (LongInt(Frec.Track) * LongInt(Frec.Scount) + LongInt(Frec.Sect-1)) * 1024);
+{  Seek(F, (LongInt(Frec.Track) * LongInt(Frec.Scount) + LongInt(Frec.Sect-1)) * 1024); }
   Seek(F, Pos);
   BlockRead(F, Buf, SizeOf(Buf));
   {$I+}
@@ -979,7 +996,7 @@ end;
 
 Function TMicroDOSDiskImage.WriteSect(Frec:TFormRec;Var Buf:TBufType):Word;
 var
-   L:LongInt; 
+   L:LongInt;
 begin
   { Frec.Side:=Frec.Track And 1;  }
   { Frec.Track:=Frec.Track ShR 1; }
@@ -1033,7 +1050,11 @@ End;
 
 Function TMicroDOSDiskImage.GetDiskNameEx:ShortString;
 Begin
+{$Ifdef fpc}
   GetDiskNameEx:='MST Disk image ' + SysUtils.ExtractFileName(FileName);
+{$else}
+  GetDiskNameEx:='MST Disk image '; { TODO BP }
+{$endif}
 End;
 
 End.

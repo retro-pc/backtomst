@@ -21,7 +21,12 @@ Uses
 SysUtils,
 {$endif}
 
-Views, StdDlg, Dialogs, Drivers, Objects, MSTDisk, MsgBox;
+Views, StdDlg, Dialogs, Drivers, Objects, MSTDisk, MsgBox {$ifndef fpc} ,Service {$endif}, part3msx;
+
+{$ifndef fpc}
+Type
+  Sw_Integer = Integer;
+{$endif}
 
 Type
 
@@ -40,6 +45,7 @@ Type
     procedure HandleEvent(Var Event: TEvent); virtual;
     procedure GetData(var Rec); virtual;
     procedure Draw; virtual;
+    Function GetPalette: PPalette; virtual;
   end;
 
 Type
@@ -58,9 +64,11 @@ Type
     Procedure SaveFileAs(FileName:ShortString; P:Pointer);virtual;
     Procedure AddFile(FileName:ShortString);virtual;
     Procedure ViewFile;virtual;
+    Procedure ViewFileEx;virtual;
     Procedure DeleteFile;Virtual;
     Procedure CopyFile;Virtual;
     Function FileExists(FileName:ShortString; User:Byte):Boolean;virtual;
+    Function GetPalette: PPalette; virtual;
   End;
   {---------------------------------------------------------}
 
@@ -89,7 +97,7 @@ Type
 
 Implementation
 
-Uses App, Dos, MstConst, FViewer;
+Uses App, Dos, MstConst {$ifdef fpc}, FViewer {$endif};
 
 type
   PSearchRec = ^TSearchRec;
@@ -203,9 +211,9 @@ begin
 
   While (P <> nil) and (I <= (SizeOf(TCatalog) div SizeOf(TEntry)) - 1) do { ç† Ø•‡¢Æ¨ Ø‡ÆÂÆ§• ß†ØÆ´≠Ô•¨ ·Ø®·Æ™ ®¨•≠ ‰†©´Æ¢ }
   begin
-//    if Catalog[I].Recs < $80 Then
-//    if (Catalog[I].Recs < $80) And ((Catalog[I].User < $20) or (Catalog[I].User = $E5)) Then
-//    if (Catalog[I].Re0 = $00) And ((Catalog[I].User < $20) or (Catalog[I].User = $E5)) Then
+{    if Catalog[I].Recs < $80 Then }
+{    if (Catalog[I].Recs < $80) And ((Catalog[I].User < $20) or (Catalog[I].User = $E5)) Then }
+{    if (Catalog[I].Re0 = $00) And ((Catalog[I].User < $20) or (Catalog[I].User = $E5)) Then }
     if (Catalog[I].Re1 = $00) And (Catalog[I].Exn And $1F = $00) And ((Catalog[I].User < $20) or (Catalog[I].User = $E5)) Then
     begin
         S.Name:= Catalog[I].Name + '.' + Char(Byte(Catalog[I].Ext[0]) And $7F)
@@ -214,7 +222,11 @@ begin
         S.User:= Catalog[I].User;
         new(P);
         FillChar(P^,SizeOf(P^), 0);
+        {$ifdef fpc}
         P^.Name:=UpperCase(String(S.Name));
+        {$else}
+        P^.Name:=strupr(S.Name);
+        {$endif}
         P^.User:=S.User;
         P^.Selected:=False;
         FileList^.Insert(P);
@@ -233,7 +245,11 @@ begin
           S.Name:= Catalog[I].Name + '.' + Char(Byte(Catalog[I].Ext[0]) And $7F)
                                          + Char(Byte(Catalog[I].Ext[1]) And $7F)
                                          + Char(Byte(Catalog[I].Ext[2]) And $7F);
+          {$ifdef fpc}
           S.Name:= UpperCase(S.Name);
+          {$else}
+          S.Name:= strupr(S.Name);
+          {$endif}
           S.User:= Catalog[I].User;
           if (TMSTSearchRec(FileList^.At(J)^).Name = S.Name) And (TMSTSearchRec(FileList^.At(J)^).User = S.User) Then
           begin
@@ -329,7 +345,6 @@ begin
             Draw;
           End
         End;
-
       End;
     End;
   evBroadCast:
@@ -360,6 +375,48 @@ function TMSTFileList.IsSelected(Item: Sw_Integer):Boolean;
 Begin
   IsSelected:=PMSTSearchRec(List^.At(Item))^.Selected;
 End;
+
+Function TMSTFileList.GetPalette: PPalette;
+(*
+                   1    2    3    4    5
+                …ÕÕÕÕ—ÕÕÕÕ—ÕÕÕÕ—ÕÕÕÕ—ÕÕÕÕª
+  CListViewer   ∫ 26 ≥ 26 ≥ 27 ≥ 28 ≥ 29 ∫
+                »ÕÕ—ÕœÕÕ—ÕœÕÕ—ÕœÕÕ—ÕœÕÕ—Õº
+  ActiveƒƒƒƒƒƒƒƒƒƒƒŸ    ≥    ≥    ≥    ¿ƒƒƒDivider
+  InactiveƒƒƒƒƒƒƒƒƒƒƒƒƒƒŸ    ≥    ¿ƒƒƒƒƒƒƒƒSelected
+  FocusedƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒŸ
+
+                  1    2    3    4    5    6    7    8
+               …ÕÕÕÕ—ÕÕÕÕ—ÕÕÕÕ—ÕÕÕÕ—ÕÕÕÕ—ÕÕÕÕ—ÕÕÕÕ—ÕÕÕÕª
+  CGrayWindow  ∫ 24 ≥ 25 ≥ 26 ≥ 27 ≥ 28 ≥ 29 ≥ 30 ≥ 31 ∫
+               ÃÕÕÕÕœÕÕÕÕœÕÕÕÕœÕÕÕÕœÕÕÕÕœÕÕÕÕœÕÕÕÕœÕÕÕÕπ
+               ÃÕÕÕÕ—ÕÕÕÕ—ÕÕÕÕ—ÕÕÕÕ—ÕÕÕÕ—ÕÕÕÕ—ÕÕÕÕ—ÕÕÕÕπ
+  CCyanWindow  ∫ 16 ≥ 17 ≥ 18 ≥ 19 ≥ 20 ≥ 21 ≥ 22 ≥ 23 ∫
+               ÃÕÕÕÕœÕÕÕÕœÕÕÕÕœÕÕÕÕœÕÕÕÕœÕÕÕÕœÕÕÕÕœÕÕÕÕπ
+               ÃÕÕÕÕ—ÕÕÕÕ—ÕÕÕÕ—ÕÕÕÕ—ÕÕÕÕ—ÕÕÕÕ—ÕÕÕÕ—ÕÕÕÕπ
+  CBlueWindow  ∫  8 ≥  9 ≥ 10 ≥ 11 ≥ 12 ≥ 13 ≥ 14 ≥ 15 ∫
+               »ÕÕ—ÕœÕÕ—ÕœÕÕ—ÕœÕÕ—ÕœÕÕ—ÕœÕÕ—ÕœÕÕ—ÕœÕÕ—Õº
+  Frame PassiveƒƒƒŸ    ≥    ≥    ≥    ≥    ≥    ≥    ¿ƒƒƒReserved
+  Frame ActiveƒƒƒƒƒƒƒƒƒŸ    ≥    ≥    ≥    ≥    ¿ƒƒƒƒƒƒƒƒScroller
+                            ≥    ≥    ≥    ≥              Selected Text
+  Frame IconƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒŸ    ≥    ≥    ¿ƒƒƒƒƒƒƒƒƒƒƒƒƒScroller Normal
+                                 ≥    ≥                   Text
+  ScrollBar PageƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒŸ    ¿ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒScrollBar
+                                                          Reserved
+
+*)
+Const
+  P:String[Length(CListViewer) + 1] = #1#2#5#6#2 + #1;
+Begin
+  GetPalette := @P;
+End;
+{---------------------------------------------------------}
+Function TMSTShortWindow.GetPalette:PPalette;
+Const
+  P:String[Length(CBlueWindow)] = CBlueWindow;
+Begin
+  GetPalette := @P;
+End;
 {---------------------------------------------------------}
 PROCEDURE TMSTFileList.Draw;
 VAR  I, J, ColWidth, Item, Indent, CurCol: Sw_Integer;
@@ -384,7 +441,7 @@ BEGIN
        Then Begin
          Color := GetColor(4);                        { Selected color }
          SCOff := 2;                                  { Colour offset=2 }
-       End Else Begin
+       End Else Begin If State and sfActive = 0 Then Color := GetColor(1) Else
          Color := GetColor(2);                        { Normal Color }
          SCOff := 4;                                  { Colour offset=4 }
        End;
@@ -400,8 +457,12 @@ BEGIN
              SpecialChars[SCOff+1]);                        { Set marker character }
          End;
        End;
-       MoveChar(B[CurCol+ColWidth-1], #179,
-         GetColor(5), 1);                             { Put centre line marker }
+       If State and sfActive <> 0 Then
+         MoveChar(B[CurCol+ColWidth-1], #179,
+           GetColor(5), 1)                             { Put centre line marker }
+       Else
+         MoveChar(B[CurCol+ColWidth-1], #179,
+           GetColor(6), 1);                            { Put centre line marker }
      End;
      WriteLine(0, I, Size.X, 1, B);                 { Write line to screen }
    End;
@@ -477,9 +538,16 @@ Begin
         ClearEvent(Event);
       End;
 }
+{$ifdef fpc}
       kbCtrlR:
       Begin
         Lb^.ReadDir;
+        ClearEvent(Event);
+      End;
+{$endif}
+      kbShiftF3:
+      Begin
+        ViewFileEx;
         ClearEvent(Event);
       End;
     End;
@@ -490,6 +558,8 @@ Begin
         AddFile(String(Event.InfoPtr^));
         ClearEvent(Event);
       end;
+      cmMSTDiskOpen:
+        ClearEvent(Event);
     End;
   End;
   Inherited HandleEvent(Event);
@@ -651,7 +721,14 @@ begin
     Catalog[I].Ext[1]:=Char(Byte(Catalog[I].Ext[1]) And $7F);
     Catalog[I].Ext[2]:=Char(Byte(Catalog[I].Ext[2]) And $7F);
 
-    If ((UpperCase(Catalog[I].Name) = PMSTSearchRec(P)^.FName) and (UpperCase(Catalog[I].Ext) = PMSTSearchRec(P)^.FExt) and (Catalog[I].User = PMSTSearchRec(P)^.User)) Then
+    {$ifdef fpc}
+    If ((UpperCase(Catalog[I].Name) = PMSTSearchRec(P)^.FName) and
+        (UpperCase(Catalog[I].Ext) = PMSTSearchRec(P)^.FExt) and
+    {$else}
+    If ((strupr(Catalog[I].Name) = PMSTSearchRec(P)^.FName) and
+        (strupr(Catalog[I].Ext) = PMSTSearchRec(P)^.FExt) and
+    {$endif}
+        (Catalog[I].User = PMSTSearchRec(P)^.User)) Then
       pcat^.Insert(@Catalog[I]);
     I:=I+1;
   end;
@@ -704,13 +781,15 @@ begin
 end;
 {---------------------------------------------------------}
 Procedure TMSTShortWindow.ViewFile;
+{$ifdef fpc}
 Var
   FileName:ShortString;
   H: PFileWindow;
 {  R: TRect; }
   P: PMSTSearchRec;
+{$endif}
 begin
-
+{$ifdef fpc}
   P := PMSTSearchRec(@P);
 
   If Lb^.List^.Count > 0 Then
@@ -732,6 +811,7 @@ begin
   {     Desktop^.Insert(H);   }
     end;
   End;
+{$endif}
 end;
 (*
 var
@@ -744,6 +824,51 @@ begin
   Desktop^.Insert(H);
 end;
 *)
+{---------------------------------------------------------}
+Procedure TMSTShortWindow.ViewFileEx;
+{$ifdef fpc}
+Var
+  FileName:ShortString;
+  H: PFileWindow;
+{  R: TRect; }
+  P: PMSTSearchRec;
+{$endif}
+  BASFile:PBASFile;
+  BASFileName:String;
+begin
+{$ifdef fpc}
+  P := PMSTSearchRec(@P);
+
+  If Lb^.List^.Count > 0 Then
+  Begin
+    Lb^.GetData(P);
+
+    FileName:=GetTempFileName;
+    SaveFileAs(FileName, P);
+    If SysUtils.FileExists(FileName) Then
+    begin
+  {     R.Assign(0,0,72,15);  }
+  {     Desktop^.GetExtent(R);}
+      {$ifdef fpc}
+      If UpperCase(RightStr(Trim(P^.FExt), 3)) = 'BAS' Then
+      Begin
+        BASFile:=New(PBASFile, Init(nil, FileName));
+        BASFileName:=GetTempFileName;
+        BASFile^.WriteBASFile(BASFileName);
+        H := New(PFileWindow, Init(BASFileName, Trim(P^.FName) + '.' + Trim(P^.FExt), false));
+        Application^.InsertWindow(H);
+      End
+      Else
+        ViewFile;
+      {$else}
+      H := New(PFileWindow, Init(FileName, FileName, false));
+      Application^.InsertWindow(H);
+      {$endif}
+  {     Desktop^.Insert(H);   }
+    end;
+  End;
+{$endif}
+end;
 {---------------------------------------------------------}
 Procedure TMSTShortWindow.AddFile(FileName:ShortString);
 Var
@@ -761,7 +886,7 @@ Var
   Rslt:Word;
 {  S:String; }
 begin
-  // FileName:='C:\UTIL\FPC\SAVE\MST.NEW\TV\fdrawcmd.ppu';
+  { FileName:='C:\UTIL\FPC\SAVE\MST.NEW\TV\fdrawcmd.ppu'; }
 
   While not MSTDisk^.ReadDir(Catalog) do
   Begin
@@ -780,19 +905,29 @@ begin
   { TODO: ÑÆ°†¢®‚Ï Ø‡Æ¢•‡™„ ≠† ≠†´®Á®• ¨•·‚† ¢ ™†‚†´Æ£•   }
   { TODO: ÑÆ°†¢®‚Ï Ø‡Æ¢•‡™„ ≠† ‚Æ Á‚Æ ‰†©´ „¶• ·„È•·‚¢„•‚ }
 
+  {$ifdef fpc}
   FileName:=UpperCase(FileName);
+  {$else}
+  FileName:=strupr(FileName);
+  {$endif}
 
+  {$ifdef fpc}
   If Self.FileExists(LeftStr(StdDlg.ExtractFileName(FileName), 8) + SysUtils.ExtractFileExt(FileName), 0) Then
   Begin
-    MessageBox('File'#13 + LeftStr(StdDlg.ExtractFileName(FileName), 8) + SysUtils.ExtractFileExt(FileName) + #13'for user 0 exist, can''t add file', Nil, mfError +
+    MessageBox('File'#13 + LeftStr(StdDlg.ExtractFileName(FileName), 8) +
+               SysUtils.ExtractFileExt(FileName) +
+               #13'for user 0 exist, can''t add file', Nil, mfError +
       mfOKButton);
     Exit;
   End;
+  {$else}
+  { TODO BP }
+  {$endif}
 
   { ç• ·Æ¢·•¨ ¢•‡≠Î© ØÆ§·Á•‚ ™Æ´®Á•·‚¢† ≠•ß†≠Ô‚ÎÂ Ì™·‚•≠‚Æ¢ }
   { ÑÆ´¶•≠ ´® §‡†©¢•‡ îë Æ°≠„´Ô‚Ï ≠•ß†≠Ô‚Î• ß†Ø®·® FAT ???  }
   I:=0;
-//  FreeVec:=BlockCount - 2;
+{  FreeVec:=BlockCount - 2; }
   FreeVec:=(MSTDisk^._Dpb.DSize + 1) - 2;
 
   FillChar(Frm_Vec, SizeOf(Frm_Vec), 0);
@@ -821,19 +956,27 @@ begin
   {$I+}
   If IOResult <> 0 Then
   Begin
+    {$Ifdef fpc}
     FileName:=StdDlg.ExtractFileName(FileName) + SysUtils.ExtractFileExt(FileName);
+    {$else}
+    { TODO BP }
+    {$endif}
     MessageBox('Error open file: '#13 + FileName, nil, mfError or mfOKButton);
     Exit;
   End;
   If LongInt(FreeVec) * 2048 < FileSize Then
   Begin
+    {$Ifdef fpc}
     FileName:=StdDlg.ExtractFileName(FileName) + SysUtils.ExtractFileExt(FileName);
+    {$else}
+    { TODO BP }
+    {$endif}
     MessageBox('Not enough free space for file: '#13 + FileName, nil, mfError or mfOKButton);
     Exit;
   End;
 
-  //FileName:=ExtractFileName(FileName);
-  //FileName:=UpperCase(FileName);
+{  FileName:=ExtractFileName(FileName); }
+{  FileName:=UpperCase(FileName); }
   Reset(F, 1);
   I:=0;
   J:=2;
@@ -849,9 +992,13 @@ begin
         if Catalog[I].User = $E5 Then
         begin
           FillChar(Catalog[I], SizeOf(Catalog[I]), 0);
-//          Catalog[I].User:=0;
+{          Catalog[I].User:=0; }
+          {$ifdef fpc}
           Catalog[I].Name:=LeftStr(StdDlg.ExtractFileName(FileName) + '        ', 8);
           Catalog[I].Ext:=Copy(SysUtils.ExtractFileExt(FileName) + '   ', 2, 3);
+          {$else}
+          { TODO BP }
+          {$endif}
           Catalog[I].Exn:=(Exn and $1F);
           Catalog[I].Re1:=(Exn shr $5);
           Catalog[I].Recs:=0;
@@ -939,11 +1086,11 @@ begin
   ExistSelected:=False;
   P := PMSTSearchRec(@P);
 
-  // è‡Æ¢•‡Ô•¨, •·‚Ï ´® ¢Î°‡†≠≠Î• ‰†©´Î ØÆ INS
+  { è‡Æ¢•‡Ô•¨, •·‚Ï ´® ¢Î°‡†≠≠Î• ‰†©´Î ØÆ INS }
 
   For Item:=0 to Lb^.List^.Count - 1 do
     ExistSelected := ExistSelected Or Lb^.IsSelected(Item);
-//    ExistSelected := ExistSelected Or PMSTSearchRec(Lb^.List^.At(Item))^.Selected;
+{    ExistSelected := ExistSelected Or PMSTSearchRec(Lb^.List^.At(Item))^.Selected; }
 
   If ExistSelected Then
   Begin
@@ -954,16 +1101,28 @@ begin
       If P^.Selected Then
       Begin
 
+        {$ifdef fpc}
         FileName:=Trim(P^.FName) + '.' + Trim(P^.FExt);
+        {$else}
+        FileName:=(P^.FName) + '.' + (P^.FExt); { TODO BP }
+        {$endif}
         for w:=1 to Length(FileName) do
           if FileName[w] in IllegalChars Then FileName[w]:='_';
         FileNames[0]:=FileName;
 
+        {$ifdef fpc}
         FileName:=GetTempFileName;
+        {$else}
+        FileName:='TEMP.TMP'; { TODO BP }
+        {$endif}
         FileNames[1]:=FileName;
 
         SaveFileAs(FileName, P);
+        {$ifdef fpc}
         If SysUtils.FileExists(FileName) Then
+        {$else}
+        { TODO BP }
+        {$endif}
           Message(Application, evBroadCast, cmCopyFileMST, @FileNames);
 
         P^.Selected:=False;
@@ -978,19 +1137,32 @@ begin
   Begin
 
     Lb^.GetData(P);
+    {$ifdef fpc}
     FileName:=Trim(P^.FName) + '.' + Trim(P^.FExt);
+    {$else}
+    FileName:=(P^.FName) + '.' + (P^.FExt); { TODO BP }
+    {$endif}
 
     for w:=1 to Length(FileName) do
       if FileName[w] in IllegalChars Then FileName[w]:='_';
     FileNames[0]:=FileName;
 
+    {$ifdef fpc}
     FileName:=GetTempFileName;
+    {$else}
+    FileName:='TEMP.TMP'; { TODO BP }
+    {$endif}
+
     FileNames[1]:=FileName;
 
     SaveFileAs(FileName, P);
+    {$ifdef fpc}
     If SysUtils.FileExists(FileName) Then
+    {$else}
+    { TODO BP }
+    {$endif}
     begin
-  //    Message(Application, evCommand, cmCopyFileMST, @FileNames);
+{      Message(Application, evCommand, cmCopyFileMST, @FileNames); }
       Message(Application, evBroadCast, cmCopyFileMST, @FileNames);
     end;
   End;
@@ -1027,7 +1199,11 @@ begin
     Catalog[I].Ext[0]:=Char(Byte(Catalog[I].Ext[0]) And $7F);
     Catalog[I].Ext[1]:=Char(Byte(Catalog[I].Ext[1]) And $7F);
     Catalog[I].Ext[2]:=Char(Byte(Catalog[I].Ext[2]) And $7F);
+    {$Ifdef fpc}
     If (Catalog[I].User = User) and ((Trim(Catalog[I].Name) + '.' + Trim(Catalog[I].Ext)) = FileName) Then
+    {$Else}
+    If (Catalog[I].User = User) and (((Catalog[I].Name) + '.' + (Catalog[I].Ext)) = FileName) Then { TODO BP }
+    {$Endif}
     Begin
       FileExists:=True;
       Exit;

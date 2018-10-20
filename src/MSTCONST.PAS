@@ -31,6 +31,7 @@ const
   cmCopyFileDOS = 180;
   cmCopyFileMST = 181;
 
+  cmMSTDiskOpen = 182;
 Const
   kbGrayAst     = $372A;
 

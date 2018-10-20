@@ -211,7 +211,7 @@ type
     HiLitePar: THighliteParams;
     constructor Init(var Bounds: TRect; AStream: PStream;
       const AFileName, AVFileName: String;
-      ASB: PView; Quick, Hex: Boolean); {DataCompBoy}
+      ASB: PView; Quick, Hex: Boolean; ViOpt: Byte); {DataCompBoy}
     constructor Load(var S: TStream);
     procedure Store(var S: TStream);
     destructor Done; virtual;
@@ -274,7 +274,7 @@ var
 implementation
 
 uses
-  Dos, {Commands,} Memory, Dialogs, MsgBox, StdDlg, App, FV_Const {$ifdef win32}, Messages {$endif};
+  Dos, {Commands,} Memory, Dialogs, MsgBox, StdDlg, App, FV_Const {$ifdef win32}, Messages, Mst_Ext {$endif};
 
 {$include koi2asc.inc}
 
@@ -457,7 +457,7 @@ begin
 
 constructor TFileViewer.Init(var Bounds: TRect; AStream: PStream;
         const AFileName, AVFileName: String;
-        ASB: PView; Quick, Hex: Boolean); {DataCompBoy}
+        ASB: PView; Quick, Hex: Boolean; ViOpt: Byte); {DataCompBoy}
 var
   C: Char;
 begin
@@ -476,12 +476,12 @@ begin
   isValid := True;
   Loaded := False;
   KillAfterUse := False;
-  Wrap := 0;
-  if {EditorDefaults.ViOpt and} vbfWrap <> 0 then
-    Wrap := 1;
-  if {EditorDefaults.ViOpt and} vbfWordWrap <> 0 then
-    Wrap := 2;
-  ViewMode := {EditorDefaults.ViOpt and}Byte(Hex);
+  Wrap := wmNone; { 0 }
+  if {EditorDefaults.ViOpt and} ViOpt and vbfWrap <> 0 then
+    Wrap := wmWidth; { 1 }
+  if {EditorDefaults.ViOpt and} ViOpt and vbfWordWrap <> 0 then
+    Wrap := wmWords; { 2 }
+  ViewMode := {EditorDefaults.ViOpt and} ViOpt and Byte(Hex);
   Fl := AStream;
   if  (AFileName = '') and (Fl = nil) then
     Exit;
@@ -2860,7 +2860,7 @@ begin
   Insert(P);
   GetExtent(R);
   R.Grow(-1, -1);
-  PV := New(PFileViewer, Init(R, nil, FileName, VFileName, P, False, Hex));
+  PV := New(PFileViewer, Init(R, nil, FileName, VFileName, P, False, Hex, 0));
   Insert(PV); {Вставить надо даже при ошибке для последующего контроля }
   if not PV^.isValid then
     {AK155}
@@ -2896,6 +2896,7 @@ Begin
   Move(FileName[1], FName, Length(FileName));        { Create asciiz name }
   Handle := InvalidHandle;
   DosStreamError := 0;
+  SetLastOSError(0);
   if Mode = stCreate then
   Begin
     Handle := FileCreate(FileName, ExtMode);
@@ -2906,6 +2907,7 @@ Begin
   End;
   If Handle <> -1 Then
   Begin
+    SetLastOSError(0);
     StreamSize := FileSeek(Handle, 0, fsFromEnd);
     If StreamSize = -1 Then
     {$ifdef win32}
@@ -2920,7 +2922,7 @@ Begin
     {$ifdef win32}
       DosStreamError := GetLastOSError;
     {$else}
-      
+
     {$endif}
   If (DosStreamError <> 0) Then
     Error(stInitError, DosStreamError)               { Call stream error }
@@ -2935,11 +2937,12 @@ Begin
   DosStreamError := $00;
   if Handle <> InvalidHandle then
   Begin
+    SetLastOSError(0);
     FileClose(Handle);
     {$ifdef win32}
       DosStreamError := GetLastOSError;
     {$else}
-      
+
     {$endif}
     If DosStreamError = 0 then
       Status := stOk
@@ -2958,6 +2961,7 @@ Begin
   DosStreamError := $00;
   if Handle <> InvalidHandle then
   Begin
+    SetLastOSError(0);
     FileClose(Handle);
     {$ifdef win32}
     DosStreamError := GetLastOSError;
@@ -2980,6 +2984,7 @@ Begin
   DosStreamError := $00;
   If Status = stOk then
   Begin
+    SetLastOSError(0);
     If Not FileTruncate(Handle, FileSeek(Handle, 0, fsFromCurrent)) Then
       {$ifdef win32}
       DosStreamError := GetLastOSError;
@@ -3002,6 +3007,7 @@ Begin
   Begin
     If (Pos < 0) Then
       Pos := 0;                                      { Negatives removed }
+    SetLastOSError(0);
     If FileSeek(Handle, Pos, fsFromBeginning) = -1 Then
       {$ifdef win32}
       DosStreamError := GetLastOSError;
@@ -3024,6 +3030,7 @@ Begin
   Begin
     If (Handle = InvalidHandle) Then
     Begin
+      SetLastOSError(0);
       if OpenMode = stCreate then
       Begin
         Handle := FileCreate(FileName, ExtOpenMode);
@@ -3034,6 +3041,7 @@ Begin
       End;
       If Handle <> -1 Then
       Begin
+        SetLastOSError(0);
         StreamSize := FileSeek(Handle, 0, fsFromEnd);
         If StreamSize = -1 Then
         {$ifdef win32}
@@ -3073,6 +3081,7 @@ Begin
           Error(stReadError, 0);                           { Read beyond end!!! }
         If (Handle = InvalidHandle) Then
           Error(stReadError, 103);                         { File not open }
+        SetLastOSError(0);
         BytesMoved:= FileRead(Handle, Buf, Count );        { Read from file }
         {$ifdef win32}
         DosStreamError := GetLastOSError;
@@ -3107,11 +3116,12 @@ Begin
      exit;
    If (Handle = InvalidHandle) Then
     Error(stWriteError, 103);                    { File not open }
+   SetLastOSError(0);
    BytesMoved:=FileWrite(Handle, Buf, Count );   { Write to file }
    {$ifdef win32}
    DosStreamError := GetLastOSError;
    {$else}
-   
+
    {$endif}
    If ((DosStreamError<>0) OR (BytesMoved<>Count)) Then
       Begin  { Error was detected }
