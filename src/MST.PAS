@@ -5,7 +5,7 @@
 {  Back to MST                                   }
 {                                                }
 {  Version 1.0                                   }
-{  Copyright (C) MarinovSoft 2013-2014           }
+{  Copyright (C) MarinovSoft 2013-2018           }
 {                                                }
 {  From Kuzbass (Siberia) with Love              }
 {                                                }

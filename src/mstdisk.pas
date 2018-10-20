@@ -1,6 +1,6 @@
 {************************************************}
 {                                                }
-{  Copyright (C) MarinovSoft 2013-2014           }
+{  Copyright (C) MarinovSoft 2013-2018           }
 {                                                }
 {  http://marinovsoft.narod.ru                   }
 {  mailto:super386@rambler.ru                    }

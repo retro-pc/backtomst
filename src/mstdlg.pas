@@ -1,6 +1,6 @@
 {************************************************}
 {                                                }
-{  Copyright (C) MarinovSoft 2013-2014           }
+{  Copyright (C) MarinovSoft 2013-2018           }
 {                                                }
 {  http://marinovsoft.narod.ru                   }
 {  mailto:super386@rambler.ru                    }
@@ -834,6 +834,8 @@ begin
       end;
     end;
   end;
+  pcat^.DeleteAll;
+  Dispose(pcat, Done);
   System.Close(_F);
 end;
 {---------------------------------------------------------}
@@ -936,6 +938,7 @@ begin
         BASFile:=New(PBASFile, Init(nil, FileName));
         BASFileName:=GetTempFileName;
         BASFile^.WriteBASFile(BASFileName);
+        Dispose(BASFile, Done);
         H := New(PFileWindow, Init(BASFileName, Trim(P^.FName) + '.' + Trim(P^.FExt), false));
         Application^.InsertWindow(H);
       End
@@ -967,6 +970,7 @@ Var
   Rslt:Word;
 {  S:String; }
   FileExt:String;
+  FreeFatRecs:Word;
 begin
 
   While not MSTDisk^.ReadDir(Catalog) do
@@ -1015,17 +1019,22 @@ begin
   Frm_Vec[0]:=1;
   Frm_Vec[1]:=1;
 
+  FreeFatRecs:=(SizeOf(TCatalog) div SizeOf(TEntry));
+
   While (I <= (SizeOf(TCatalog) div SizeOf(TEntry)) - 1) do
   begin
     if Catalog[I].User <> $E5 Then
     begin
+      Dec(FreeFatRecs);
       For J:=0 to 7 do
         If MSTDisk^._Dpb.Dsize > $FF Then
+        Begin
           If (Catalog[I].FatW[J] <= MSTDisk^._Dpb.Dsize) And (Catalog[I].FatW[J] > 1) Then
           begin
             Frm_Vec[Catalog[I].FatW[J]]:=1;
             Dec(FreeVec);
           end
+        End
         else
           If (Catalog[I].FatB[J] <= MSTDisk^._Dpb.Dsize) And (Catalog[I].FatB[J] > 1) Then
           begin
@@ -1033,7 +1042,7 @@ begin
             Dec(FreeVec);
           end
     end;
-    I:=I+1;
+    Inc(I);
   end;
 
   Assign(F, FileName);
@@ -1045,17 +1054,17 @@ begin
   If IOResult <> 0 Then
   Begin
     {$Ifdef fpc}
-    FileName:=StdDlg.ExtractFileName(FileName) + SysUtils.ExtractFileExt(FileName);
+    FileName:=SysUtils.ExtractFileName(FileName);
     {$else}
     { TODO BP }
     {$endif}
     MessageBox('Error open file: '#13 + FileName, nil, mfError or mfOKButton);
     Exit;
   End;
-  If LongInt(FreeVec) * 2048 < FileSize Then
+  If (LongInt(FreeVec) * 2048 < FileSize) or (LongInt(FreeFatRecs) * 8 * 2048 < FileSize) Then
   Begin
     {$Ifdef fpc}
-    FileName:=StdDlg.ExtractFileName(FileName) + SysUtils.ExtractFileExt(FileName);
+    FileName:=SysUtils.ExtractFileName(FileName);
     {$else}
     { TODO BP }
     {$endif}
@@ -1100,24 +1109,6 @@ begin
         Inc(I);
       End;
 
- {
-    While Frm_Vec[J]=1 do
-      Inc(J);
-
-    Catalog[I].Fat[FatRec]:=J;
-    Frm_Vec[J]:=1;
-
-    If FileSize >= SizeOf(Buf) Then
-      BlockRead(F, Buf, SizeOf(Buf))
-    else
-      BlockRead(F, Buf, FileSize);
-
-    Errc:=PMicroDOSDisk(MSTDisk)^.WriteBlock(J, @buf);
-
-    If Errc <> 0 Then
-    begin
-    end;
-}
     If FileSize >= SizeOf(Buf) Then
       BlockRead(F, Buf, SizeOf(Buf))
     else

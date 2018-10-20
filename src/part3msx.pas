@@ -13,7 +13,9 @@ Type
   PBasFile = ^TBasFile;
   TBasFile = Object
     Fl: PStream;
+    MustDisposeStream:Boolean;
     Constructor Init(AStream: PStream; AFileName: String);
+    Destructor Done;virtual;
     Procedure WriteBASFile(NewFileName:String);
   {$ifdef fpc}
   protected
@@ -35,6 +37,7 @@ Begin
   if  (AFileName = '') and (Fl = nil) then
     Exit;
   {$I-}
+  MustDisposeStream:=Fl = nil;
   if Fl = nil then
   Begin
   {$Ifdef fpc}
@@ -87,7 +90,7 @@ Begin
     S:=S + ' ' + ReadLine + #13#10;
     BASStream^.Write(S[1], Length(S));
   Until {$ifdef fpc}Fl^.Position >= Size;{$else}Fl^.GetPos >= Size; {$endif}
-  BASStream^.Done;
+  Dispose(BASStream, Done);
 End;
 
 Function TBasFile.Byte2Hex(B:Byte):String;
@@ -418,6 +421,12 @@ Begin
   End;
   ReadLine:=S;
 End;
+
+Destructor TBasFile.Done;
+Begin
+  If MustDisposeStream Then
+    Dispose(Fl, Done);
+end;
 
 Begin
 {$ifdef fpc}

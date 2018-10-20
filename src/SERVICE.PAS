@@ -1,7 +1,7 @@
 {************************************************}
 {                                                }
 { Copyright (C) 1997 Michael Radchenko           }
-{ Portions Copyright (C) 2009 MarinovSoft        }
+{ Portions Copyright (C) 2009-2018 MarinovSoft   }
 {                                                }
 {************************************************}
 

@@ -1,6 +1,6 @@
 {************************************************}
 {                                                }
-{  Copyright (C) MarinovSoft 2013-2014           }
+{  Copyright (C) MarinovSoft 2013-2018           }
 {                                                }
 {  http://marinovsoft.narod.ru                   }
 {  mailto:super386@rambler.ru                    }
@@ -547,6 +547,7 @@ begin
          BASFile:=New(PBASFile, Init(nil, FileName));
          BASFileName:=GetTempFileName;
          BASFile^.WriteBASFile(BASFileName);
+         Dispose(BASFile, Done);
          H := New(PFileWindow, Init(BASFileName, Trim(P^.Name), false));
          Application^.InsertWindow(H)
       End
