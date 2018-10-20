@@ -14,6 +14,8 @@ unit MSTConst;
 
 interface
 
+Uses md5;
+
 const
   cmAbout      = 170;
   cmReadDisc   = 171;
@@ -32,8 +34,28 @@ const
   cmCopyFileMST = 181;
 
   cmMSTDiskOpen = 182;
+
+  cmFileInfo    = 183;
+//  cmClearDataBase = 184;
+  cmFileInfoShow = 185;
+  cmEditCategories = 186;
+
+  cmSelectDriveA5 = 190;
+  cmSelectDriveA3 = 191;
+  cmSelectDriveB5 = 192;
+  cmSelectDriveB3 = 193;
+
 Const
   kbGrayAst     = $372A;
+
+type
+  PFileInfoRec = ^TFileInfoRec;
+  TFileInfoRec = packed record
+    FileName:ShortString;
+    TempFileName:ShortString;
+    hash:TMD5Digest;
+    comment:ShortString;
+  end;
 
 implementation
 

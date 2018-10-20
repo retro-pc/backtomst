@@ -1,3 +1,4 @@
+{$mode objfpc}
 Unit Part3Msx;
 
 Interface
@@ -27,7 +28,7 @@ Begin
     Exit;
   {$I-}
   if Fl = nil then
-    Fl := New(PHandleDosStream, Init(AFileName, stOpenRead, fmOpenRead or fmShareDenyNone))
+    Fl := New(PHandleDosStream, Init(AFileName, stOpenRead, fmOpenRead or fmShareCompat))
 //    Fl:=New(PDosStream, Init(AFileName, stOpenRead))
   else if Fl^.Status = stOK then
 
@@ -46,7 +47,7 @@ Begin
   Nor:=0;
   Size:=Fl^.GetSize;
   Fl^.Seek(0);
-  BASStream:= New(PHandleDosStream, init(NewFileName, stCreate, fmOpenWrite or fmShareDenyNone));
+  BASStream:= New(PHandleDosStream, init(NewFileName, stCreate, fmOpenWrite or fmShareDenyWrite));
   FL^.Read(Nor, 1);
   If Nor <> $FF Then
     Fl^.Seek(Fl^.Position - 1);
@@ -90,7 +91,7 @@ Var
   I,J:Byte;
   Inquote:Boolean;
   tmpWord:Word;
-  tmpInteger:Integer;
+  tmpInteger:SmallInt;
   tmpByte1,tmpByte2:Byte;
 
   tmpSngl:Single;
@@ -102,6 +103,7 @@ Var
   S:String;
   Goon:Boolean;
   Forwarded:Byte;
+
 Begin
   S:='';
   Goon:=True;Forwarded:=0;
@@ -195,10 +197,13 @@ Begin
       $1D:Begin                    { Встретилось число с плав.точкой   }
         Fl^.Read(tmpSngl,SizeOf(tmpSngl));
         tmpSngl:=_Fmsbintoieee(tmpSngl);
-        If Frac(tmpSngl)=0.0 Then
-          S:=S+FloatToStrF(tmpSngl,ffGeneral,0,0)+'!'
-        Else
-          S:=S+FloatToStrF(tmpSngl,ffGeneral,0,7);
+        try
+          If Frac(tmpSngl)=0.0 Then
+            S:=S+FloatToStrF(tmpSngl,ffGeneral,0,0)+'!'
+          Else
+            S:=S+FloatToStrF(tmpSngl,ffGeneral,0,7);
+        except
+        end;
       End;
       $1F:Begin
         Fl^.Read(tmpDbl,SizeOf(tmpDbl));

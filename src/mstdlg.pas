@@ -28,13 +28,16 @@ Type
   Sw_Integer = Integer;
 {$endif}
 
+type
+  TSortMode = (psmName, psmExt, psmSize,  psmUnsorted);
+
 Type
 
   PMSTFileList = ^TMSTFileList;
   TMSTFileList = Object(TFileList)
     constructor Init(var Bounds: TRect; AScrollBar: PScrollBar);
     procedure SetData(var Rec); virtual;
-    procedure ReadDir;virtual;
+    Function ReadDir:Boolean;virtual;
     function IsSelected(Item: Sw_Integer):Boolean;virtual;
     {$ifdef fpc}
     function GetText(Item: LongInt; MaxLen: LongInt): ShortString; virtual;
@@ -46,6 +49,7 @@ Type
     procedure GetData(var Rec); virtual;
     procedure Draw; virtual;
     Function GetPalette: PPalette; virtual;
+    procedure Sort(SortMode:TSortMode);
   end;
 
 Type
@@ -56,6 +60,7 @@ Type
     Msk:String;
     Lb:PMSTFileList;
     MSTDisk:PMSTDisk;
+    LastError:Byte;
   {  Constructor Init(Dir,Mask:String);}
     Constructor Init(lMSTDisk:PMSTDisk);
     Destructor Done;Virtual;
@@ -67,6 +72,7 @@ Type
     Procedure ViewFileEx;virtual;
     Procedure DeleteFile;Virtual;
     Procedure CopyFile;Virtual;
+    Procedure FileInfo;virtual;
     Function FileExists(FileName:ShortString; User:Byte):Boolean;virtual;
     Function GetPalette: PPalette; virtual;
   End;
@@ -76,6 +82,7 @@ Type
 
   PCPMFileCollection = ^TCPMFileCollection;
   TCPMFileCollection = object(TFileCollection)
+    SortMode:TSortMode;
     {$ifdef fpc}
     function Compare(Key1, Key2: Pointer): LongInt; virtual;
     {$else}
@@ -130,7 +137,7 @@ begin
     ReadDir;
 end;
 {---------------------------------------------------------}
-procedure TMSTFileList.ReadDir;
+Function TMSTFileList.ReadDir:Boolean;
 Var
   Filelist:PCPMFileCollection;
   P: PMSTSearchRec;
@@ -139,15 +146,36 @@ Var
   Catalog:TCatalog;
   J: Word;
 {  fExist:Boolean;}
+  ValidFileName:Boolean;
+
+  SortMode:TSortMode;
+
+  Rslt:Word;
+  Errc:Byte;
 begin
 
-  While not PMSTShortWindow(Owner)^.MSTDisk^.ReadDir(Catalog) Do
+  While true Do
   Begin
-    { Заглушка }
-    Break;
+    If PMSTShortWindow(Owner)^.MSTDisk^.ReadDir(Catalog) Then
+      Break;
+    Rslt:= MessageBox(#3'Catalog not ready, retry?', Nil, mfError +
+       mfYesNoCancel);
+    If Rslt = cmCancel Then
+      Exit (False);
+    If Rslt = cmNo Then
+      Break;
+    PMSTShortWindow(Owner)^.MSTDisk^.ResetDisk;
   End;
 
+  If Assigned(List) Then
+  Begin
+    SortMode:=PCPMFileCollection(List)^.SortMode;
+  End;
+  If not (SortMode in [psmExt, psmName]) Then
+    SortMode:=psmExt;
+
   Filelist:=New(PCPMFileCollection,Init(5, 5));
+  FileList^.SortMode:=SortMode;
 
   P := PMSTSearchRec(@P);
 
@@ -216,21 +244,36 @@ begin
 {    if (Catalog[I].Re0 = $00) And ((Catalog[I].User < $20) or (Catalog[I].User = $E5)) Then }
     if (Catalog[I].Re1 = $00) And (Catalog[I].Exn And $1F = $00) And ((Catalog[I].User < $20) or (Catalog[I].User = $E5)) Then
     begin
-        S.Name:= Catalog[I].Name + '.' + Char(Byte(Catalog[I].Ext[0]) And $7F)
-                                       + Char(Byte(Catalog[I].Ext[1]) And $7F)
-                                       + Char(Byte(Catalog[I].Ext[2]) And $7F);
-        S.User:= Catalog[I].User;
-        new(P);
-        FillChar(P^,SizeOf(P^), 0);
-        {$ifdef fpc}
-        P^.Name:=UpperCase(String(S.Name));
-        {$else}
-        P^.Name:=strupr(S.Name);
-        {$endif}
-        P^.User:=S.User;
-        P^.Selected:=False;
-        FileList^.Insert(P);
-
+        ValidFileName:=True;
+        For J:=0 To 7 do
+          If Byte(Catalog[I].Name[J]) < $20 Then
+          Begin
+            ValidFileName:=False;
+            Break;
+          End;
+        For J:=0 To 2 do
+          If (Byte(Catalog[I].Ext[J]) and $7F) < $20 Then
+          Begin
+            ValidFileName:=False;
+            Break;
+          End;
+        If ValidFileName Then
+        Begin
+          S.Name:= Catalog[I].Name + '.' + Char(Byte(Catalog[I].Ext[0]) And $7F)
+                                         + Char(Byte(Catalog[I].Ext[1]) And $7F)
+                                         + Char(Byte(Catalog[I].Ext[2]) And $7F);
+          S.User:= Catalog[I].User;
+          new(P);
+          FillChar(P^,SizeOf(P^), 0);
+          {$ifdef fpc}
+          P^.Name:=UpperCase(String(S.Name));
+          {$else}
+          P^.Name:=strupr(S.Name);
+          {$endif}
+          P^.User:=S.User;
+          P^.Selected:=False;
+          FileList^.Insert(P);
+        End;
     end;
     I:=I+1;
   end;
@@ -263,7 +306,15 @@ begin
   end;
 
   Newlist(Filelist);
+
+  Exit (True);
 end;
+{---------------------------------------------------------}
+procedure TMSTFileList.Sort(SortMode:TSortMode);
+Begin
+  PCPMFileCollection(List)^.SortMode:=SortMode;
+  ReadDir;
+End;
 {---------------------------------------------------------}
 function TMSTFileList.GetKey(var S: String): Pointer;
 { const
@@ -344,6 +395,14 @@ begin
             End;
             Draw;
           End
+        End;
+        kbCtrlF4:
+        Begin
+          Sort(psmExt);
+        End;
+        kbCtrlF3:
+        Begin
+          Sort(psmName);;
         End;
       End;
     End;
@@ -489,8 +548,10 @@ Begin
   Lb:=New(PMSTFileList,Init(R, Nil));
   Lb^.SetState(sfCursorVis, False);
   Insert(Lb);
-  Lb^.ReadDir;
-
+  If Lb^.ReadDir Then
+    LastError:=0
+  else
+    LastError:=1;
 End;
 {---------------------------------------------------------}
 Destructor TMSTShortWindow.Done;
@@ -528,6 +589,7 @@ Begin
         ClearEvent(Event);
       end;
 }
+      cmFileInfo: FileInfo;
     End;
     evKeyDown:
     Case Event.KeyCode of
@@ -691,13 +753,16 @@ begin
   Begin
 
     Rslt:=MessageBox(#3'Catalog not ready, retry?', Nil, mfError +
-      mfYesButton Or mfNoButton);
+      mfYesButton Or mfNoButton Or mfCancelButton);
     If Rslt = cmYes Then
     Begin
       MSTDisk^.ResetDisk;
     End
     Else
-      Exit;
+      If Rslt = cmNo Then
+        Break
+      Else
+        Exit;
 
   End;
 
@@ -888,6 +953,7 @@ Var
   Errc:Byte;
   Rslt:Word;
 {  S:String; }
+  FileExt:String;
 begin
 
   While not MSTDisk^.ReadDir(Catalog) do
@@ -1004,7 +1070,11 @@ begin
 {          Catalog[I].User:=0; }
           {$ifdef fpc}
           Catalog[I].Name:=LeftStr(StdDlg.ExtractFileName(FileName) + '        ', 8);
-          Catalog[I].Ext:=Copy(SysUtils.ExtractFileExt(FileName) + '   ', 2, 3);
+          FileExt:=SysUtils.ExtractFileExt(FileName);
+          If FileExt = '' Then
+            Catalog[I].Ext:='   '
+          else
+            Catalog[I].Ext:=Copy(FileExt + '   ', 2, 3);
           {$else}
           { TODO BP }
           {$endif}
@@ -1180,6 +1250,43 @@ begin
   End;
 end;
 {---------------------------------------------------------}
+Procedure TMSTShortWindow.FileInfo;
+Var
+  P:PMSTSearchRec;
+  InfoRec:TFileInfoRec;
+  W:Word;
+Begin
+
+  P := PMSTSearchRec(@P);
+
+  If Lb^.List^.Count > 0 Then
+  Begin
+
+    Lb^.GetData(P);
+    {$ifdef fpc}
+    InfoRec.FileName:=Trim(P^.FName) + '.' + Trim(P^.FExt);
+    {$else}
+    InfoRec.FileName:=(P^.FName) + '.' + (P^.FExt); { TODO BP }
+    {$endif}
+
+    {$ifdef fpc}
+    InfoRec.TempFileName:=GetTempFileName;
+    {$else}
+    InfoRec.TempFileName:='TEMP.TMP'; { TODO BP }
+    {$endif}
+
+    SaveFileAs(InfoRec.TempFileName, P);
+    {$ifdef fpc}
+    If SysUtils.FileExists(InfoRec.TempFileName) Then
+    {$else}
+    { TODO BP }
+    {$endif}
+    begin
+      Message(Application, evCommand, cmFileInfoShow, @InfoRec);
+    end;
+  end;
+end;
+{---------------------------------------------------------}
 Function TMSTShortWindow.FileExists(FileName: ShortString; User: Byte):Boolean;
 Var
   Catalog:TCatalog;
@@ -1235,13 +1342,26 @@ function TCPMFileCollection.Compare(Key1, Key2: Pointer): LongInt;
 function TCPMFileCollection.Compare(Key1, Key2: Pointer): Integer;
 {$endif}
 begin
-  if PMSTSearchRec(Key1)^.FExt > PMSTSearchRec(Key2)^.FExt Then Compare := 1
-  else if PMSTSearchRec(Key2)^.FExt > PMSTSearchRec(Key1)^.FExt Then Compare := -1
-  else if PMSTSearchRec(Key1)^.FName > PMSTSearchRec(Key2)^.FName then Compare := 1
-  else if PMSTSearchRec(Key2)^.FName > PMSTSearchRec(Key1)^.FName then Compare := -1
-  else If PMSTSearchRec(Key1)^.User > PMSTSearchRec(Key2)^.User Then Compare := 1
-  else If PMSTSearchRec(Key2)^.User > PMSTSearchRec(Key1)^.User Then Compare := -1
-  else Compare := 0;
+  case SortMode of
+  psmExt:
+    if PMSTSearchRec(Key1)^.FExt > PMSTSearchRec(Key2)^.FExt Then Compare := 1
+    else if PMSTSearchRec(Key2)^.FExt > PMSTSearchRec(Key1)^.FExt Then Compare := -1
+    else if PMSTSearchRec(Key1)^.FName > PMSTSearchRec(Key2)^.FName then Compare := 1
+    else if PMSTSearchRec(Key2)^.FName > PMSTSearchRec(Key1)^.FName then Compare := -1
+    else If PMSTSearchRec(Key1)^.User > PMSTSearchRec(Key2)^.User Then Compare := 1
+    else If PMSTSearchRec(Key2)^.User > PMSTSearchRec(Key1)^.User Then Compare := -1
+    else Compare := 0;
+  psmName:
+    if PMSTSearchRec(Key1)^.FName > PMSTSearchRec(Key2)^.FName then Compare := 1
+    else if PMSTSearchRec(Key2)^.FName > PMSTSearchRec(Key1)^.FName then Compare := -1
+    else if PMSTSearchRec(Key1)^.FExt > PMSTSearchRec(Key2)^.FExt Then Compare := 1
+    else if PMSTSearchRec(Key2)^.FExt > PMSTSearchRec(Key1)^.FExt Then Compare := -1
+    else If PMSTSearchRec(Key1)^.User > PMSTSearchRec(Key2)^.User Then Compare := 1
+    else If PMSTSearchRec(Key2)^.User > PMSTSearchRec(Key1)^.User Then Compare := -1
+    else Compare := 0;
+  else
+    Compare := 0;
+  end;
 end;
 
 procedure TCPMFileCollection.FreeItem(Item: Pointer);

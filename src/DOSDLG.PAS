@@ -796,6 +796,7 @@ Begin
 {  Palette:=wpBlueWindow;}
   CurMask:=Mask;
   R.Assign(1, 1, Size.X - 1, Size.Y - 1);
+//  R.Assign(1, 1, Size.X - 1, Size.Y - 3);
   mFileList:=New(PDOSLongFileList, Init(R, Nil));
   mFileList^.SetState(sfCursorVis, False);
   Insert(mFileList);
@@ -978,6 +979,7 @@ Begin
 
   CurMask:=Mask;
   R.Assign(1, 1, Size.X - 1, Size.Y - 1);
+//  R.Assign(1, 1, Size.X - 1, Size.Y - 3);
   mFileList:=New(PDOSLongFileList, Init(R, Nil));
   mFileList^.SetState(sfCursorVis, False);
   Insert(mFileList);

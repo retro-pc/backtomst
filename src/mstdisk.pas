@@ -150,7 +150,7 @@ Type
     {$endif}
     {$endif}
   public
-    Constructor Init(_DiskName:Char;Frec:TFormRec);
+    Constructor Init(_DiskName:Char;Frec:TFormRec;_DataRate:Byte);
     Destructor Done;virtual;
     Procedure ResetDisk;Virtual;
     Function FormatTrack(Frec:TFormRec):Word;Virtual;
@@ -287,7 +287,7 @@ Begin
 End;
 {$endif}
 
-Constructor TMicroDOSDisk.Init(_DiskName:Char;Frec:TFormRec);
+Constructor TMicroDOSDisk.Init(_DiskName:Char;Frec:TFormRec;_DataRate:Byte);
 {$ifdef fpc}
 {$ifdef win32}
 Var
@@ -308,8 +308,9 @@ Begin
     'B': lpFileName:='\\.\fdraw1';
     Else DiskAddr:=0;
   End;
-  DataRate:= FD_RATE_300K;
+//  DataRate:= FD_RATE_250K;
   { Проверить на реальном дисководе! // 0=500Kbps (HD), 1=300Kbps (DD 5.25"), 2=250Kbps (DD 3.5"), 3=1Mbps (ED) }
+  DataRate:=_DataRate;
   hMST:=CreateFile(lpFileName, GENERIC_READ or GENERIC_WRITE, 0, nil, OPEN_EXISTING, 0, 0);
   { if hMST = INVALID_HANDLE_VALUE Then begin end }
   DeviceIoControl(hMST, IOCTL_FD_SET_DATA_RATE, @DataRate, SizeOf(DataRate), nil, 0, dwRet, nil);

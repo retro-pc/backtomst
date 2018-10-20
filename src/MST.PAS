@@ -20,7 +20,7 @@
 {$endif}
 
 Uses App, Objects, Views, Menus, Drivers, Stddlg,
-  Msgbox, GrowView, AppWin,  Mstconst, MSTDisk, AppWinEx, MstDlg, DosDlg, FV_Const, SysUtils
+  Msgbox, GrowView, AppWin, Mstconst, MSTDisk, AppWinEx, MstDlg, DosDlg, FV_Const, SysUtils
 {$ifdef fpc}
 {$ifndef win32}
 , Go32
@@ -62,6 +62,8 @@ Type
     FileName:String;
     DiskName:String;
     {$endif}
+  { 0=500Kbps (HD), 1=300Kbps (DD 5.25"), 2=250Kbps (DD 3.5"), 3=1Mbps (ED) }
+    FDRate:(FD_RATE_500K=0,FD_RATE_300K=1,FD_RATE_250K=2,FD_RATE_1M=3);
     Dbt:Array[0..9] Of Byte;
     LeftWindow:PMSTShortWindow;
     RightWindow:PDOSShortWindow;
@@ -107,12 +109,19 @@ Begin
     Nil))))),
     NewSubMenu('~O~ptions', hcNoContext, NewMenu(
     NewSubMenu('~D~rive', hcNoContext, NewMenu(
-    NewItem('A:', '', kbNoKey, cmSelectDriveA, hcNoContext,
-    NewItem('B:', '', kbNoKey, cmSelectDriveB, hcNoContext,
-    NewItem('File image', '', kbNoKey, cmSelectDriveImage, hcNoContext,
-    Nil)))),
-    NewItem('Floppy setup', '', kbNoKey, cmOptions, hcNoContext,
+    NewSubMenu('Drive ~A~', hcNoContext, NewMenu(
+    NewItem('~3~''5', '', kbNoKey, cmSelectDriveA3, hcNoContext,
+    NewItem('~5~''25', '', kbNoKey, cmSelectDriveA5, hcNoContext,
     Nil))),
+    NewSubMenu('Drive ~B~', hcNoContext, NewMenu(
+    NewItem('~3~''5', '', kbNoKey, cmSelectDriveB3, hcNoContext,
+    NewItem('~5~''25', '', kbNoKey, cmSelectDriveB5, hcNoContext,
+    Nil))),
+    NewItem('File ~i~mage', '', kbNoKey, cmSelectDriveImage, hcNoContext,
+    Nil)))),
+//    NewItem('Floppy setup', '', kbNoKey, cmOptions, hcNoContext,
+//    Nil))),
+    Nil)),
     NewSubMenu('~W~indow', hcNoContext, NewMenu(
     StdWindowMenuItems(Nil)),
     NewSubMenu('~H~elp', hcNoContext, NewMenu(
@@ -164,14 +173,22 @@ Begin
         FormatDisk; {переделать}
         ClearEvent(Event);
       End;
-      cmSelectDriveA:
+      cmSelectDriveA3,cmSelectDriveA5:
       Begin
         DiskName:='A';
+        If Event.Command = cmSelectDriveA3 Then
+          FDRate:=FD_RATE_250K
+        else
+          FDRate:=FD_RATE_300K;
         ClearEvent(Event);
       End;
-      cmSelectDriveB:
+      cmSelectDriveB3,cmSelectDriveB5:
       Begin
         DiskName:='B';
+        If Event.Command = cmSelectDriveB3 Then
+          FDRate:=FD_RATE_250K
+        else
+          FDRate:=FD_RATE_300K;
         ClearEvent(Event);
       End;
       cmSelectDriveImage:
@@ -258,7 +275,7 @@ Begin
   If DiskName[0] > #1 Then
      MSTDisk:= New(PMicroDOSDiskImage, Init(DiskName, Frec))
   Else If DiskName[0] > #0 Then
-     MSTDisk:= New(PMicroDOSDisk, Init(DiskName[1], Frec))
+     MSTDisk:= New(PMicroDOSDisk, Init(DiskName[1], Frec, Byte(FDRate)))
   Else
      Exit;
 
@@ -391,12 +408,12 @@ Begin
   If DiskName[0] > #1 Then
      MSTDisk:= New(PMicroDOSDiskImage, Init(DiskName, Frec))
   Else If DiskName[0] > #0 Then
-     MSTDisk:= New(PMicroDOSDisk, Init(DiskName[1], Frec))
+     MSTDisk:= New(PMicroDOSDisk, Init(DiskName[1], Frec, Byte(FDRate)))
   Else
      Exit;
 
   MSTDisk^.ReadDPB;
-	 
+
   Assign(F, FileName);
   ReWrite(F);
 
@@ -495,7 +512,7 @@ Begin
   If DiskName[0] > #1 Then
      MSTDisk:= New(PMicroDOSDiskImage, Init(DiskName, Frec))
   Else If DiskName[0] > #0 Then
-     MSTDisk:= New(PMicroDOSDisk, Init(DiskName[1], Frec))
+     MSTDisk:= New(PMicroDOSDisk, Init(DiskName[1], Frec, Byte(FDRate)))
   Else
      Exit;
 
@@ -593,6 +610,7 @@ Const
 }
 Begin
   Inherited Init;
+  DisableCommands([cmFileInfo, cmEditCategories]);
 //  DiskName:='ESL_00.kdi';
   Frec.Ssize:=3;
   Frec.Gap1:=0;
@@ -664,13 +682,15 @@ begin
   If DiskName[0] > #1 Then
      MSTDisk:= New(PMicroDOSDiskImage, Init(DiskName, Frec))
   Else If DiskName[0] > #0 Then
-     MSTDisk:= New(PMicroDOSDisk, Init(DiskName[1], Frec))
+     MSTDisk:= New(PMicroDOSDisk, Init(DiskName[1], Frec, Byte(FDRate)))
   Else
      Exit;
   { MSTDisk^.ReadDir(Catalog); }
   LeftWindow:=New(PMSTShortWindow, Init(MSTDisk));
-
-  Desktop^.Insert(LeftWindow);
+  If LeftWindow^.LastError = 0 Then
+    Desktop^.Insert(LeftWindow)
+  Else
+    Dispose(LeftWindow, Done);
 {  Dispose(MSTDisk, Done);}
 end;
 
@@ -708,9 +728,9 @@ Procedure TMSTApplication.Idle;
 Begin
   Inherited Idle;
   If Message(Application, evBroadCast, cmMSTDiskOpen, nil) <> Nil Then
-    DisableCommands([cmReadDisc,cmWriteDisc,cmListDisk,cmFormatDisc,cmSelectDriveA,cmSelectDriveB,cmSelectDriveImage])
+    DisableCommands([cmReadDisc,cmWriteDisc,cmListDisk,cmFormatDisc,cmSelectDriveA5,cmSelectDriveA3,cmSelectDriveB5,cmSelectDriveB3,cmSelectDriveImage])
   Else
-    EnableCommands([cmReadDisc,cmWriteDisc,cmListDisk,cmFormatDisc,cmSelectDriveA,cmSelectDriveB,cmSelectDriveImage]);
+    EnableCommands([cmReadDisc,cmWriteDisc,cmListDisk,cmFormatDisc,cmSelectDriveA5,cmSelectDriveA3,cmSelectDriveB5,cmSelectDriveB3,cmSelectDriveImage]);
 End;
 
 Var
