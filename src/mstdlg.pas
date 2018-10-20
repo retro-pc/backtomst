@@ -39,7 +39,7 @@ Type
     function GetKey(var S: String): Pointer; virtual;
     procedure HandleEvent(Var Event: TEvent); virtual;
     procedure GetData(var Rec); virtual;
-    procedure Draw;
+    procedure Draw; virtual;
   end;
 
 Type
@@ -130,9 +130,7 @@ Var
   I: Word;
   Catalog:TCatalog;
   J: Word;
-
-  fExist:Boolean;
-
+{  fExist:Boolean;}
 begin
 
   While not PMSTShortWindow(Owner)^.MSTDisk^.ReadDir(Catalog) Do
@@ -206,7 +204,9 @@ begin
   While (P <> nil) and (I <= (SizeOf(TCatalog) div SizeOf(TEntry)) - 1) do { На первом проходе заполняем список имен файлов }
   begin
 //    if Catalog[I].Recs < $80 Then
-    if (Catalog[I].Recs < $80) And ((Catalog[I].User < $20) or (Catalog[I].User = $E5)) Then
+//    if (Catalog[I].Recs < $80) And ((Catalog[I].User < $20) or (Catalog[I].User = $E5)) Then
+//    if (Catalog[I].Re0 = $00) And ((Catalog[I].User < $20) or (Catalog[I].User = $E5)) Then
+    if (Catalog[I].Re1 = $00) And (Catalog[I].Exn And $1F = $00) And ((Catalog[I].User < $20) or (Catalog[I].User = $E5)) Then
     begin
         S.Name:= Catalog[I].Name + '.' + Char(Byte(Catalog[I].Ext[0]) And $7F)
                                        + Char(Byte(Catalog[I].Ext[1]) And $7F)
@@ -250,9 +250,9 @@ begin
 end;
 {---------------------------------------------------------}
 function TMSTFileList.GetKey(var S: String): Pointer;
-const
+{ const
   SR: TMSTSearchRec = ();
-
+}
 procedure UpStr(var S: String);
 var
   I: Integer;
@@ -411,8 +411,10 @@ END;
 Constructor TMSTShortWindow.Init(lMSTDisk:PMSTDisk);
 Var
   R:TRect;
+{
   Sb:PScrollBar;
   ST:PStaticText;
+}
 Begin
 
   Desktop^.GetExtent(R);
@@ -558,7 +560,7 @@ begin
 
      End;
   End
-  Else
+  Else If Lb^.List^.Count > 0 Then
   Begin
     Lb^.GetData(P);
     If P^.User = $E5 Then
@@ -705,28 +707,31 @@ Procedure TMSTShortWindow.ViewFile;
 Var
   FileName:ShortString;
   H: PFileWindow;
-  R: TRect;
+{  R: TRect; }
   P: PMSTSearchRec;
 begin
 
   P := PMSTSearchRec(@P);
 
-  Lb^.GetData(P);
+  If Lb^.List^.Count > 0 Then
+  Begin
+    Lb^.GetData(P);
 
-  FileName:=GetTempFileName;
-  SaveFileAs(FileName, P);
-  If SysUtils.FileExists(FileName) Then
-  begin
-{     R.Assign(0,0,72,15);  }
-{     Desktop^.GetExtent(R);}
-    {$ifdef fpc}
-    H := New(PFileWindow, Init(FileName, Trim(P^.FName) + '.' + Trim(P^.FExt), false));
-    {$else}
-    H := New(PFileWindow, Init(FileName, FileName, false));
-    {$endif}
-    Application^.InsertWindow(H);
-{     Desktop^.Insert(H);   }
-  end;
+    FileName:=GetTempFileName;
+    SaveFileAs(FileName, P);
+    If SysUtils.FileExists(FileName) Then
+    begin
+  {     R.Assign(0,0,72,15);  }
+  {     Desktop^.GetExtent(R);}
+      {$ifdef fpc}
+      H := New(PFileWindow, Init(FileName, Trim(P^.FName) + '.' + Trim(P^.FExt), false));
+      {$else}
+      H := New(PFileWindow, Init(FileName, FileName, false));
+      {$endif}
+      Application^.InsertWindow(H);
+  {     Desktop^.Insert(H);   }
+    end;
+  End;
 end;
 (*
 var
@@ -754,7 +759,7 @@ Var
   FatRec:Byte;
   Errc:Byte;
   Rslt:Word;
-  S:String;
+{  S:String; }
 begin
   // FileName:='C:\UTIL\FPC\SAVE\MST.NEW\TV\fdrawcmd.ppu';
 
@@ -969,7 +974,7 @@ begin
     Draw;
 
   End
-  Else
+  Else If Lb^.List^.Count > 0 Then
   Begin
 
     Lb^.GetData(P);

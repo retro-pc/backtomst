@@ -22,16 +22,23 @@
  {= Please use it as you like.                                             =}
  {==========================================================================}
 
- {$F+,O+,X+,I+,B-,V-}
+ {$O+,X+,I+,B-,V-}
 
  {$ifdef DebugVersion}
-  {$R+,S+,Q+,D+,L+,Y+}
+  {$R+,S+,Q+,D+}
  {$else}
-  {$R-,S-,Q-,D-,L-,Y-}
+  {$R-,S-,Q-,D-}
  {$endif}
 
  {$ifdef fpc}
  {$A1}
+ {$else}
+ {$F+}
+ {$ifdef DebugVersion}
+  {$L+,Y+}
+ {$else}
+  {$L-,Y-}
+ {$endif}
  {$endif}
 
  unit GrowView ;

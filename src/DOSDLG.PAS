@@ -381,7 +381,6 @@ var
   S: DOS.SearchRec;
   P: PDOSSearchRec;
   FileList: PFileCollection;
-  NumFiles: Word;
   FindStr,
   WildName : ShortString;
   Dir: DirStr;
@@ -390,7 +389,6 @@ var
   Event : TEvent;
   Tmp: PathStr;
 begin
-  NumFiles := 0;
   FileList := New(PDOSFileCollection, Init(5, 5));
   AWildCard := FExpand(AWildCard);
   FSplit(AWildCard, Dir, Name, Ext);
@@ -748,7 +746,7 @@ end;
 procedure TDOSShortWindow.AddFile(FileNames:TFileNames);
 Var
   FileName:String;
-  Rslt:Word;
+{  Rslt:Word; }
 begin
 //  MessageBox(FileNames[0], nil, 0);
 //  MessageBox(FileNames[1], nil, 0);

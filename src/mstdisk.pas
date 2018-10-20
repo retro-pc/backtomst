@@ -348,10 +348,10 @@ Var
 {$ifdef win32}
   _Flag     :BOOL;
   dwRet     :LongWord;
-  {$else}
+{$else}
   Regs:TRealRegs;
-  {$endif}
-  {$endif}
+{$endif}
+{$endif}
 begin
   {$ifdef fpc}
   {$ifdef win32}
@@ -402,10 +402,7 @@ End;
 
 Function TMicroDOSDisk.FormatTrack(Frec:TFormRec):Word;
 Var
-  I,J,Bs,Bo : Word;
-  S,Err: Byte;
-  Side,Track:Byte;
-  Disk : Byte;
+  I:Word;
 {$ifdef fpc}
 {$ifdef win32}
   dwRet     :LongWord;
@@ -415,7 +412,14 @@ Var
 {$else}
   Block : Array[1..128,0..3] Of Byte;
   R     : TRealRegs;
+  S,Err : Byte;
+  Disk  : Byte;
 {$endif}
+{$else}
+  Bs,Bo : Word;
+  S,Err : Byte;
+  Side,Track:Byte;
+  Disk : Byte;
 {$endif}
 Begin
   {$ifndef fpc}
@@ -527,15 +531,19 @@ End;
 
 Function TMicroDOSDisk.ReadSect(Frec:TFormRec;Var Buf:TBufType):Word;
 Var
-  Disk: Byte;
-  Segbuf,Ofsbuf : Word;
-  Err: Byte;
+{$ifdef fpc}
 {$ifdef win32}
   _Flag:BOOL;
   dwRet:LongWord;
 {$else}
-  _Flag:Byte;
   R:TRealRegs;
+  Disk: Byte;
+  Err: Byte;
+{$endif}
+{$else}
+  Disk: Byte;
+  Segbuf,Ofsbuf : Word;
+  Err: Byte;
 {$endif}
 Begin
 
@@ -624,17 +632,19 @@ End;
 
 Function TMicroDOSDisk.WriteSect(Frec:TFormRec;Var Buf:TBufType):Word;
 Var
-  Err           : Byte;
-  Segbuf,Ofsbuf : Word;
-  Disk          : Byte;
 {$ifdef fpc}
 {$ifdef win32}
   _Flag:BOOL;
   dwRet:LongWord;
 {$else}
-  _Flag:Byte;
   R:TRealRegs;
+  Err           : Byte;
+  Disk          : Byte;
 {$endif}
+{$else}
+  Err           : Byte;
+  Segbuf,Ofsbuf : Word;
+  Disk          : Byte;
 {$endif}
 Begin
   {$ifndef fpc}
@@ -969,7 +979,7 @@ end;
 
 Function TMicroDOSDiskImage.WriteSect(Frec:TFormRec;Var Buf:TBufType):Word;
 var
-   L:LongInt;
+   L:LongInt; 
 begin
   { Frec.Side:=Frec.Track And 1;  }
   { Frec.Track:=Frec.Track ShR 1; }

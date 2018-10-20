@@ -19,7 +19,7 @@
 {$R-}
 {$endif}
 
-Uses App, Objects, Views, Menus, Drivers, Dialogs, Stddlg,
+Uses App, Objects, Views, Menus, Drivers, Stddlg,
   Msgbox, GrowView, AppWin,  Mstconst, MSTDisk, AppWinEx, MstDlg, DosDlg, FV_Const, SysUtils
 {$ifdef fpc}
 {$ifndef win32}
@@ -443,7 +443,7 @@ Var
   Rslt:Word;
   MSTDisk:PMSTDisk;
   FileDialog:PFileDialog;
-  FileExt:ShortString;
+{  FileExt:ShortString; }
   R:TRect;
   D:PProgressDialog;
 const
@@ -474,7 +474,7 @@ Begin
 
   D:=New(PDiskProgressDialog, Init(GV1, ''));
   Desktop^.Insert(D);
-  D^.SetCurrentText('Wtite disk');
+  D^.SetCurrentText('Write disk');
 
   For Track:=0 To (Frec.Tcount ShL 1)-1 Do
   Begin
@@ -572,11 +572,22 @@ Begin
   RightWindow:=New(PDOSLongWindow, Init(S{'C:\'}, '*.*'));
 
   Desktop^.Insert(RightWindow);
+
+  B:=ParamCount;
+  While B > 0 do
+  Begin
+    If FileExists(ParamStr(B)) Then
+    Begin
+       DiskName:=ParamStr(B);
+       ListDisk;
+       Break;
+    End
+  End;
 End;
 
 Procedure TMSTApplication.SelectDriveImage;
 Var
-  R: TRect;
+{  R: TRect; }
   FileDialog: PFileDialog;
   TheFile: FNameStr;
 Const
@@ -593,7 +604,7 @@ end;
 
 Procedure TMSTApplication.ListDisk;
 var
-   Catalog:TCatalog;
+{   Catalog:TCatalog; }
    MSTDisk:PMSTDisk;
 begin
   If DiskName[0] > #1 Then
@@ -609,12 +620,15 @@ begin
 end;
 
 Destructor TMSTApplication.Done;
-Var
-  B:Byte;
 {$ifdef fpc}
 {$ifndef win32}
+Var
+  B:Byte;
   Ofs,Seg:Word;
 {$endif}
+{$else}
+Var
+  B:Byte;
 {$endif}
 Begin
   {$ifdef fpc}
