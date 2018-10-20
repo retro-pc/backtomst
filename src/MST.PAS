@@ -343,8 +343,11 @@ Var
   MSTDisk:PMSTDisk;
   FileDialog:PFileDialog;
   FileExt:ShortString;
+  R:TRect;
+  D:PProgressDialog;
 const
   FDOptions: Word = fdOKButton {or fdOpenButton};
+  GV1 : PGrowView = nil;
 Begin
   FileName:= '*.kdi';
   New(FileDialog, Init(FileName, 'Save file', '~F~ile name', FDOptions, 1));
@@ -353,18 +356,27 @@ Begin
   FileExt:=ExtractFileExt(FileName);
   If (Length(FileExt) = 0) or (FileExt = '.') Then
     FileName:=ChangeFileExt(FileName, '.kdi');
-  Assign(F,FileName);
+  Assign(F, FileName);
   ReWrite(F);
   If DiskName[0] > #1 Then
      MSTDisk:= New(PMicroDOSDiskImage, Init(DiskName, Frec))
   else
      MSTDisk:= New(PMicroDOSDisk, Init(DiskName[1], Frec));
-  For Track:=0 To (Frec.Tcount ShL 1)-1 Do
+
+  R.Assign( 2, 4, 38, 5 );
+  GV1 := New( PGrowView, Init( R, (Frec.TCount ShL 1)-1 ));
+
+  D:=New(PDiskProgressDialog, Init(GV1, ''));
+  Desktop^.Insert(D);
+  D^.SetCurrentText('Read disk');
+
+  For Track:=0 To (Frec.TCount ShL 1)-1 Do
   Begin
     Frec.Track:=Track;
     MSTDisk^.SeekTrack(Frec);
+    GV1^.Update(Track);
     Sect:=1;
-    While Sect <= Frec.Scount Do
+    While Sect <= Frec.SCount Do
     Begin
       Frec.Sect:= Sect;
       { rsect(sct,trk,buf,flag,errc);}
@@ -397,13 +409,16 @@ Begin
         If Rslt = cmCancel Then
         Begin
           { Нажали отмена - закроем файл без записи }
-          Close(F);
+          Dispose(MSTDisk, Done);
+          Dispose(D,Done);
+          Close(F);          
           Exit;
         End;
       End;
     End;
   End;
   Dispose(MSTDisk, Done);
+  Dispose(D,Done);
   Close(F);
 End;
 
@@ -418,8 +433,11 @@ Var
   MSTDisk:PMSTDisk;
   FileDialog:PFileDialog;
   FileExt:ShortString;
+  R:TRect;
+  D:PProgressDialog;
 const
   FDOptions: Word = fdOKButton {or fdOpenButton};
+  GV1 : PGrowView = nil;
 Begin
   FileName:= '*.kdi';
   New(FileDialog, Init(FileName, 'Open file', '~F~ile name', FDOptions, 1));
@@ -439,11 +457,21 @@ Begin
      MSTDisk:= New(PMicroDOSDiskImage, Init(DiskName, Frec))
   else
      MSTDisk:= New(PMicroDOSDisk, Init(DiskName[1], Frec));
+     
+  R.Assign( 2, 4, 38, 5 );
+  GV1 := New( PGrowView, Init( R, (Frec.TCount ShL 1)-1 ));
+
+  D:=New(PDiskProgressDialog, Init(GV1, ''));
+  Desktop^.Insert(D);
+  D^.SetCurrentText('Wtite disk');
+
   For Track:=0 To (Frec.Tcount ShL 1)-1 Do
   Begin
     Frec.Track:=Track;
+    MSTDisk^.SeekTrack(Frec);    
+    GV1^.Update(Track);
     Sect:=1;
-    While Sect <= Frec.Scount Do
+    While Sect <= Frec.SCount Do
     Begin
       If (FileSize(F) - FilePos(F)) <= 0 Then
       Begin
@@ -479,6 +507,8 @@ Begin
         If Rslt = cmCancel Then
         Begin
           { Нажали отмена - закроем файл без записи }
+          Dispose(MSTDisk, Done);
+          Dispose(D,Done);
           Close(F);
           Exit;
         End;
@@ -486,6 +516,7 @@ Begin
     End;
   End;
   Dispose(MSTDisk, Done);
+  Dispose(D,Done);
   Close(F);
 End;
 

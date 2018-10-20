@@ -79,7 +79,6 @@ type
   TFPosArray = array [1..9] of TFPos;
 
 type
-
   PHighliteParams = ^THighliteParams;
   THighliteParams = record
     GenFlags: Word;
@@ -114,6 +113,21 @@ type
        Используется это поле только в Арвиде, но совершенно
        в другом смысле.`}
   end;
+
+type
+  PHandleDosStream = ^THandleDosStream;
+  THandleDosStream = Object(TDosStream)
+    FileName: FNameStr;
+    Constructor Init (_FileName: FNameStr; Mode: Word; ExtMode: Word);
+    Destructor Done;                                               Virtual;
+    Procedure Close;                                               Virtual;
+    Procedure Truncate;                                            Virtual;
+    Procedure Seek (Pos: LongInt);                                 Virtual;
+    Procedure OpenEx (OpenMode: Word; ExtOpenMode: Word);          Virtual;
+    Procedure Read (Var Buf; Count: Longint);                      Virtual;
+    Procedure Write (Var Buf; Count: Longint);                     Virtual;
+  end;
+
 type
   TShortName = String[12];
   PFlName = ^TFlName;
@@ -261,6 +275,17 @@ implementation
 
 uses
   Dos, {Commands,} Memory, Dialogs, MsgBox, StdDlg, App, FV_Const {$ifdef win32}, Messages {$endif};
+
+{$include koi2asc.inc}
+
+procedure XLatBuf(var B; Len: Integer; const XTable: TXLat);
+Var
+  W:LongInt;
+Begin
+  For W:=0 To Len - 1 Do
+    PByteArray(@B)^[W]:=Byte(XTable[Char(PByteArray(@B)^[W])]);
+End;
+
 
 Type
   AWord = Word;
@@ -854,7 +879,7 @@ begin { TFileViewer.Draw }
             end
             else
               SZ[IZ] := #0;
-          (*          XLatBuf(S[W2+1], Length(S)-W2, XCoder.XLatCP[ToAscii]);*)
+            XLatBuf(S[W2+1], Length(S)-W2, koi2asc);
           {-DataCompBoy & Axel: apply filter-}
           case Filter of
             0:
@@ -946,7 +971,7 @@ begin { TFileViewer.Draw }
         if J > 0 then
         begin
           XDumpStr(S, Buf^[W], L, J, Filter); //!!s
-          (*          XLatBuf(S[10], Length(S)-9, XCoder.XLatCP[ToAscii]);*)
+          XLatBuf(S[10], Length(S)-9, koi2asc);
           Drivers.MoveStr(B, S, C);
           if SearchActive then
           begin
@@ -1085,7 +1110,7 @@ end
           if W > XDelta then
           begin
             SetLength(S, W-XDelta);
-            (*            XLatBuf(S[1], Length(S), XCoder.XLatCP[ToAscii]);*)
+            XLatBuf(S[1], Length(S), Koi2Asc);
             {Cat: фильтр перенесён сюда - он должен быть использован
       уже после применения таблицы перекодировки}
             case Filter of
@@ -1181,7 +1206,7 @@ begin
     Fl := nil;
     if FName = '' then
       Exit;
-    Fl := New(PDosStream, Init(FName, stOpenRead));
+    Fl := New(PHandleDosStream, Init(FName, stOpenRead, fmOpenRead or fmShareDenyNone));
   end;
 
   { Если FName - имя каталога, то формируем буфер (без Stream) с
@@ -1566,9 +1591,9 @@ begin
   i := WL mod 16;
   Owner^.Lock;
   {AK155}
-  if TypeOf(Fl^) = TypeOf(TDOSStream) then
+  if TypeOf(Fl^) = TypeOf(THandleDOSStream) then
   begin
-    with PDosStream(Fl)^ do
+    with PHandleDosStream(Fl)^ do
     begin
       if  (Status <> stOK) then
         goto EndProc;
@@ -2858,6 +2883,247 @@ function TFileWindow.ReactOnCmd: Boolean;
   begin
     ReactOnCmd := True
   end;
+
+Constructor THandleDosStream.Init(_FileName: FNameStr; Mode: Word; ExtMode: Word);
+Var
+  DosStreamError : LongWord;
+Begin
+  TStream.Init;                                      { Call ancestor }
+  FileName :=_FileName;
+  FileName := FileName+#0;                           { Make asciiz }
+  Move(FileName[1], FName, Length(FileName));        { Create asciiz name }
+  Handle := InvalidHandle;
+  DosStreamError := 0;
+  if Mode = stCreate then
+  Begin
+    Handle := FileCreate(FileName, ExtMode);
+  End
+  Else
+  Begin
+    Handle := FileOpen(FileName, ExtMode);
+  End;
+  If Handle <> -1 Then
+  Begin
+    StreamSize := FileSeek(Handle, 0, fsFromEnd);
+    If StreamSize = -1 Then
+    {$ifdef win32}
+      DosStreamError := GetLastOSError
+    {$else}
+      DosStreamError := $FF
+    {$endif}
+    Else
+      FileSeek(Handle, 0, fsFromBeginning);
+  End
+  Else
+    {$ifdef win32}
+      DosStreamError := GetLastOSError;
+    {$else}
+      
+    {$endif}
+  If (DosStreamError <> 0) Then
+    Error(stInitError, DosStreamError)               { Call stream error }
+  else
+    Status := StOK;
+End;
+
+Destructor THandleDosStream.Done;
+var
+  DosStreamError : LongWord;
+Begin
+  DosStreamError := $00;
+  if Handle <> InvalidHandle then
+  Begin
+    FileClose(Handle);
+    {$ifdef win32}
+      DosStreamError := GetLastOSError;
+    {$else}
+      
+    {$endif}
+    If DosStreamError = 0 then
+      Status := stOk
+    else
+      Error(stError, DosStreamError);
+  End;
+  Position := 0;                                     { Zero the position }
+  Handle := InvalidHandle;
+  TStream.Done;
+End;
+
+Procedure THandleDosStream.Close;
+var
+  DosStreamError : LongWord;
+Begin
+  DosStreamError := $00;
+  if Handle <> InvalidHandle then
+  Begin
+    FileClose(Handle);
+    {$ifdef win32}
+    DosStreamError := GetLastOSError;
+    {$else}
+
+    {$endif}
+    If DosStreamError = 0 then
+      Status := stOk
+    else
+      Error(stError, DosStreamError);
+  End;
+  Position := 0;                                     { Zero the position }
+  Handle := InvalidHandle;
+End;
+
+Procedure THandleDosStream.Truncate;
+var
+  DosStreamError : LongWord;
+Begin
+  DosStreamError := $00;
+  If Status = stOk then
+  Begin
+    If Not FileTruncate(Handle, FileSeek(Handle, 0, fsFromCurrent)) Then
+      {$ifdef win32}
+      DosStreamError := GetLastOSError;
+      {$else}
+      DosStreamError := $FF;
+      {$endif}
+    If DosStreamError = 0 then
+      StreamSize := Position
+    else
+      Error(stError, DosStreamError);
+  End;
+End;
+
+Procedure THandleDosStream.Seek(Pos: LongInt);
+var
+  DosStreamError : Word;
+Begin
+  DosStreamError := $00;
+  If (Status=stOk) Then
+  Begin
+    If (Pos < 0) Then
+      Pos := 0;                                      { Negatives removed }
+    If FileSeek(Handle, Pos, fsFromBeginning) = -1 Then
+      {$ifdef win32}
+      DosStreamError := GetLastOSError;
+      {$else}
+      DosStreamError := $FF;
+      {$endif}
+    If DosStreamError = 0 then
+      Position := Pos
+    else
+      Error(stSeekError, DosStreamError)             { Specific seek error }
+  End;
+End;
+
+Procedure THandleDosStream.OpenEx(OpenMode: Word; ExtOpenMode: Word);
+var
+  DosStreamError : Word;
+Begin
+  DosStreamError := $00;
+  If (Status=stOk) Then
+  Begin
+    If (Handle = InvalidHandle) Then
+    Begin
+      if OpenMode = stCreate then
+      Begin
+        Handle := FileCreate(FileName, ExtOpenMode);
+      End
+      Else
+      Begin
+        Handle := FileOpen(FileName, ExtOpenMode);
+      End;
+      If Handle <> -1 Then
+      Begin
+        StreamSize := FileSeek(Handle, 0, fsFromEnd);
+        If StreamSize = -1 Then
+        {$ifdef win32}
+          DosStreamError := GetLastOSError
+        {$else}
+          DosStreamError := $FF
+        {$endif}
+        Else
+          FileSeek(Handle, 0, fsFromBeginning);
+      End
+      Else
+        {$ifdef win32}
+        DosStreamError := GetLastOSError;
+        {$else}
+
+        {$endif}
+      If (DosStreamError <> 0) Then
+        Error(stInitError, DosStreamError)               { Call stream error }
+      else
+        Status := StOK;
+      Position := 0;
+    End
+    Else
+      Error(stOpenError, 104);                { File already open }
+  End;
+End;
+
+Procedure THandleDosStream.Read(Var Buf; Count: Longint);
+Var
+  BytesMoved: Longint;
+  DosStreamError : Word;
+Begin
+   DosStreamError := $00;
+   If Status = StOK then
+     Begin
+        If (Position + Count > StreamSize) Then            { Insufficient data }
+          Error(stReadError, 0);                           { Read beyond end!!! }
+        If (Handle = InvalidHandle) Then
+          Error(stReadError, 103);                         { File not open }
+        BytesMoved:= FileRead(Handle, Buf, Count );        { Read from file }
+        {$ifdef win32}
+        DosStreamError := GetLastOSError;
+        {$else}
+
+        {$endif}
+        If ((DosStreamError<>0) OR (BytesMoved<>Count)) Then
+           Begin  { Error was detected }
+             BytesMoved := 0;                              { Clear bytes moved }
+             If (DosStreamError <> 0) Then
+                Error(stReadError, DosStreamError)         { Specific read error }
+             Else
+                Error(stReadError, 0);                     { Non specific error }
+           End;
+        Inc(Position, BytesMoved);                         { Adjust position }
+     End;
+   { If there was already an error, or an error was just
+     generated, fill the vuffer with NULL
+   }
+   If Status <> StOK then
+     FillChar(Buf, Count, #0);                        { Error clear buffer }
+End;
+
+Procedure THandleDosStream.Write(Var Buf; Count: Longint);
+Var
+  BytesMoved: Longint;
+  DosStreamError : Word;
+Begin
+   DosStreamError := $00;
+   { If status is not OK, simply exit }
+   if Status <> StOK then
+     exit;
+   If (Handle = InvalidHandle) Then
+    Error(stWriteError, 103);                    { File not open }
+   BytesMoved:=FileWrite(Handle, Buf, Count );   { Write to file }
+   {$ifdef win32}
+   DosStreamError := GetLastOSError;
+   {$else}
+   
+   {$endif}
+   If ((DosStreamError<>0) OR (BytesMoved<>Count)) Then
+      Begin  { Error was detected }
+          BytesMoved := 0;                          { Clear bytes moved }
+          If (DosStreamError<>0) Then
+             Error(stWriteError, DOSStreamError)    { Specific write error }
+          Else
+             Error(stWriteError, 0);                { Non specific error }
+      End;
+   Inc(Position, BytesMoved);                       { Adjust position }
+   If (Position > StreamSize) Then                  { File expanded }
+     StreamSize := Position;                        { Adjust stream size }
+End;
+
 
 end.
 

@@ -583,7 +583,7 @@ Var
   buf:Array[0..1024 * 2 - 1] Of Byte;
 
   Frm_Vec:TFrm_Vec;
-  ExN:Word;
+  ExN:LongInt;
   FatRec:Byte;
   Errc:Byte;
 begin
@@ -665,7 +665,8 @@ begin
 //          Catalog[I].User:=0;
           Catalog[I].Name:=LeftStr(ExtractFileName(FileName) + '        ', 8);
           Catalog[I].Ext:=Copy(ExtractFileExt(FileName) + '   ', 2, 3);
-          Catalog[I].Exn:=Exn;
+          Catalog[I].Exn:=(Exn and $1F);
+          Catalog[I].Re1:=(Exn shr $5);
           Catalog[I].Recs:=0;
           Inc(Exn);
           Break;
@@ -836,10 +837,13 @@ function TEntryCollection.Compare(Key1, Key2: Pointer): Sw_Integer;
 function TEntryCollection.Compare(Key1, Key2: Pointer): Integer;
 {$endif}
 begin
-  if PEntry(Key1)^.Exn > PEntry(Key2)^.Exn Then
+  if PEntry(Key1)^.Re1 > PEntry(Key2)^.Re1 Then
     Compare := 1
-  Else
-    If PEntry(Key1)^.Exn = PEntry(Key2)^.Exn Then
+  Else If PEntry(Key1)^.Re1 < PEntry(Key2)^.Re1 Then
+    Compare := -1
+  Else If PEntry(Key1)^.Exn > PEntry(Key2)^.Exn Then
+    Compare := 1
+  Else If PEntry(Key1)^.Exn = PEntry(Key2)^.Exn Then
       Compare :=0
     Else
       Compare := -1;

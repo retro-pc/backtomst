@@ -132,8 +132,8 @@ Type
     DiskName:Char;
     DiskAddr:Word;
     {$ifdef fpc}
-    {$ifdef win32}
     hMST:THandle;
+    {$ifdef win32}
     rwp :FD_READ_WRITE_PARAMS;
     sp  :FD_SEEK_PARAMS;
     {$endif}
@@ -160,7 +160,9 @@ Type
 {  TMicroDOSDiskImage = Object(TMSTDisk)}
   TMicroDOSDiskImage = Object(TMicroDOSDisk)
   private
+  {$ifndef fpc}
     F:File;
+  {$endif}
     FileName:String;
   public
     Constructor Init(_FileName:String;FRec:TFormRec);
@@ -169,6 +171,7 @@ Type
     Function WriteSect(Frec:TFormRec;Var Buf:TBufType):Word;Virtual;
     Function FormatTrack(Frec:TFormRec):Word;Virtual;
     Function GetErrorDescription(Track, Sect, ErrorNumber:Byte):String;Virtual;
+    Function SeekTrack(Frec:TFormRec):Word;Virtual;
   end;
 
 Const
@@ -881,15 +884,23 @@ begin
   TMSTDisk.Init;
   _Frec:=Frec;
   FileName:=_FileName;
+  {$ifndef fpc}
   {$I-}
   Assign(F,FileName);
   Reset(F,1);
   {$I+}
+  {$else}
+  hMST:=FileOpen(FileName, fmOpenReadWrite or fmShareDenyWrite);
+  {$endif}
 end;
 
 destructor TMicroDOSDiskImage.Done;
 begin
+  {$ifndef fpc}
   Close(F);
+  {$else}
+  FileClose(hMST);
+  {$endif}
   TMSTDisk.Done;
 end;
 
@@ -901,13 +912,24 @@ begin
   { Frec.Track:=Frec.Track ShR 1; }
   { Frec.Sect:=Frec.Sect;         }
 
-  {$I-}
   L:=(LongInt(Frec.Track) * LongInt(Frec.Scount) + LongInt(Frec.Sect-1)) * 1024;
+  {$ifndef fpc}
+  {$I-}
   Seek(F, (LongInt(Frec.Track) * LongInt(Frec.Scount) + LongInt(Frec.Sect-1)) * 1024);
   BlockRead(F, Buf, SizeOf(Buf));
   {$I+}
-
   ReadSect:=IOResult;
+  {$else}
+  FileSeek(hMST, (LongInt(Frec.Track) * LongInt(Frec.Scount) + LongInt(Frec.Sect-1)) * 1024, fsFromBeginning);
+  If FileRead(hMST, Buf, SizeOf(Buf)) = -1 Then
+  {$ifdef win32}
+    ReadSect:=GetLastOsError
+  {$else}
+    ReadSect:=$FF
+  {$endif}
+  Else
+    ReadSect:=0;
+  {$endif}
 end;
 
 Function TMicroDOSDiskImage.WriteSect(Frec:TFormRec;Var Buf:TBufType):Word;
@@ -918,13 +940,24 @@ begin
   { Frec.Track:=Frec.Track ShR 1; }
   { Frec.Sect:=Frec.Sect;         }
 
-  {$I-}
   L:=(LongInt(Frec.Track) * LongInt(Frec.Scount) + LongInt(Frec.Sect-1)) * 1024;
+  {$ifndef fpc}
+  {$I-}
   Seek(F, (LongInt(Frec.Track) * LongInt(Frec.Scount) + LongInt(Frec.Sect-1)) * 1024);
   BlockWrite(F, Buf, SizeOf(Buf));
   {$I+}
-
   WriteSect:=IOResult;
+  {$else}
+  FileSeek(hMST, (LongInt(Frec.Track) * LongInt(Frec.Scount) + LongInt(Frec.Sect-1)) * 1024, fsFromBeginning);
+  If FileWrite(hMST, Buf, SizeOf(Buf)) = -1 Then
+  {$ifdef win32}
+    WriteSect:=GetLastOsError
+  {$else}
+    WriteSect:=$FF
+  {$endif}
+  Else
+    WriteSect:=0;
+  {$endif}
 end;
 
 Function TMicroDOSDiskImage.FormatTrack(Frec:TFormRec):Word;
@@ -947,5 +980,10 @@ Function TMicroDOSDiskImage.GetErrorDescription(Track, Sect, ErrorNumber:Byte):S
 begin
    GetErrorDescription:='Error read file. Retry?';
 end;
+
+Function TMicroDOSDiskImage.SeekTrack(Frec:TFormRec):Word;
+Begin
+  SeekTrack:=0;
+End;
 
 End.
