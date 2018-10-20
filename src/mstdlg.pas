@@ -742,7 +742,10 @@ begin
       J:=0;
       while (FileSize > 0) Do
       begin
-        PMicroDOSDisk(MSTDisk)^.ReadBlock(Entry^.Fat[J], @buf);
+        If MSTDisk^._Dpb.Dsize > $FF Then
+          PMicroDOSDisk(MSTDisk)^.ReadBlock(Entry^.Fat[J], @buf)
+        Else
+          PMicroDOSDisk(MSTDisk)^.ReadBlock(Entry^.FatB[J], @buf);
         If FileSize >= SizeOf(Buf) Then
           BlockWrite(_F, buf, SizeOf(Buf))
         else
@@ -886,7 +889,6 @@ Var
   Rslt:Word;
 {  S:String; }
 begin
-  { FileName:='C:\UTIL\FPC\SAVE\MST.NEW\TV\fdrawcmd.ppu'; }
 
   While not MSTDisk^.ReadDir(Catalog) do
   Begin
@@ -939,11 +941,18 @@ begin
     if Catalog[I].User <> $E5 Then
     begin
       For J:=0 to 7 do
-        If (Catalog[I].Fat[J] <= BlockCount) And (Catalog[I].Fat[J] > 1) Then
-        begin
-          Frm_Vec[Catalog[I].Fat[J]]:=1;
-          Dec(FreeVec);
-        end;
+        If MSTDisk^._Dpb.Dsize > $FF Then
+          If (Catalog[I].FatW[J] <= MSTDisk^._Dpb.Dsize) And (Catalog[I].FatW[J] > 1) Then
+          begin
+            Frm_Vec[Catalog[I].FatW[J]]:=1;
+            Dec(FreeVec);
+          end
+        else
+          If (Catalog[I].FatB[J] <= MSTDisk^._Dpb.Dsize) And (Catalog[I].FatB[J] > 1) Then
+          begin
+            Frm_Vec[Catalog[I].FatB[J]]:=1;
+            Dec(FreeVec);
+          end
     end;
     I:=I+1;
   end;
@@ -1034,11 +1043,14 @@ begin
     Errc:=$FF;
     While Errc <> 0 do
     begin
-      While (Frm_Vec[J] = 1) and (J < BlockCount) do
+      While (Frm_Vec[J] = 1) and (J < MSTDisk^._Dpb.Dsize) do
         Inc(J);
-      If J <= BlockCount Then
+      If J <= MSTDisk^._Dpb.Dsize Then
       Begin
-        Catalog[I].Fat[FatRec]:=J;
+        If MSTDisk^._Dpb.Dsize > $FF Then
+          Catalog[I].FatW[FatRec]:=J
+        Else
+          Catalog[I].FatB[FatRec]:=J;
         Frm_Vec[J]:=1;
         Errc:=PMicroDOSDisk(MSTDisk)^.WriteBlock(J, @buf);
       End

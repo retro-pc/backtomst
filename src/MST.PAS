@@ -395,17 +395,21 @@ Begin
   Else
      Exit;
 
+  MSTDisk^.ReadDPB;
+	 
   Assign(F, FileName);
   ReWrite(F);
 
   R.Assign( 2, 4, 38, 5 );
-  GV1 := New( PGrowView, Init( R, (Frec.TCount ShL 1)-1 ));
+//  GV1 := New( PGrowView, Init( R, (Frec.TCount ShL 1)-1 )); // Количество секторов нужно брать из dpb
+  GV1 := New( PGrowView, Init( R, (MSTDisk^._dpb.TCount ShL 1)-1 ));
 
   D:=New(PDiskProgressDialog, Init(GV1, ''));
   Desktop^.Insert(D);
   D^.SetCurrentText('Read disk');
 
-  For Track:=0 To (Frec.TCount ShL 1)-1 Do
+//  For Track:=0 To (Frec.TCount ShL 1)-1 Do       // Количество секторов нужно брать из dpb
+  For Track:=0 To (MSTDisk^._dpb.TCount ShL 1)-1 Do
   Begin
     Frec.Track:=Track;
     MSTDisk^.SeekTrack(Frec);
@@ -495,17 +499,21 @@ Begin
   Else
      Exit;
 
+  MSTDisk^._Dpb:=Dpb;
+
   Assign(F,FileName);
   Reset(F);
 
   R.Assign( 2, 4, 38, 5 );
-  GV1 := New( PGrowView, Init( R, (Frec.TCount ShL 1)-1 ));
+//  GV1 := New( PGrowView, Init( R, (Frec.TCount ShL 1)-1 )); // Количество секторов нужно брать из dpb
+  GV1 := New( PGrowView, Init( R, (MSTDisk^._dpb.TCount ShL 1)-1 ));
 
   D:=New(PDiskProgressDialog, Init(GV1, ''));
   Desktop^.Insert(D);
   D^.SetCurrentText('Write disk');
 
-  For Track:=0 To (Frec.Tcount ShL 1)-1 Do
+//  For Track:=0 To (Frec.Tcount ShL 1)-1 Do
+  For Track:=0 To (MSTDisk^._dpb.TCount ShL 1)-1 Do
   Begin
     Frec.Track:=Track;
     MSTDisk^.SeekTrack(Frec);

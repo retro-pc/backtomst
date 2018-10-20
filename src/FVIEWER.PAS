@@ -2896,7 +2896,9 @@ Begin
   Move(FileName[1], FName, Length(FileName));        { Create asciiz name }
   Handle := InvalidHandle;
   DosStreamError := 0;
+  {$Ifdef win32}
   SetLastOSError(0);
+  {$endif}
   if Mode = stCreate then
   Begin
     Handle := FileCreate(FileName, ExtMode);
@@ -2907,7 +2909,9 @@ Begin
   End;
   If Handle <> -1 Then
   Begin
+    {$Ifdef win32}
     SetLastOSError(0);
+    {$endif}
     StreamSize := FileSeek(Handle, 0, fsFromEnd);
     If StreamSize = -1 Then
     {$ifdef win32}
@@ -2937,7 +2941,9 @@ Begin
   DosStreamError := $00;
   if Handle <> InvalidHandle then
   Begin
+    {$ifdef win32}
     SetLastOSError(0);
+    {$endif}
     FileClose(Handle);
     {$ifdef win32}
       DosStreamError := GetLastOSError;
@@ -2961,7 +2967,9 @@ Begin
   DosStreamError := $00;
   if Handle <> InvalidHandle then
   Begin
+    {$ifdef win32}
     SetLastOSError(0);
+    {$endif}
     FileClose(Handle);
     {$ifdef win32}
     DosStreamError := GetLastOSError;
@@ -2984,7 +2992,9 @@ Begin
   DosStreamError := $00;
   If Status = stOk then
   Begin
+    {$ifdef win32}
     SetLastOSError(0);
+    {$endif}
     If Not FileTruncate(Handle, FileSeek(Handle, 0, fsFromCurrent)) Then
       {$ifdef win32}
       DosStreamError := GetLastOSError;
@@ -3007,7 +3017,9 @@ Begin
   Begin
     If (Pos < 0) Then
       Pos := 0;                                      { Negatives removed }
+    {$ifdef win32}
     SetLastOSError(0);
+    {$endif}
     If FileSeek(Handle, Pos, fsFromBeginning) = -1 Then
       {$ifdef win32}
       DosStreamError := GetLastOSError;
@@ -3030,7 +3042,9 @@ Begin
   Begin
     If (Handle = InvalidHandle) Then
     Begin
+      {$ifdef win32}
       SetLastOSError(0);
+      {$endif}
       if OpenMode = stCreate then
       Begin
         Handle := FileCreate(FileName, ExtOpenMode);
@@ -3041,7 +3055,9 @@ Begin
       End;
       If Handle <> -1 Then
       Begin
+        {$ifdef win32}
         SetLastOSError(0);
+        {$endif}
         StreamSize := FileSeek(Handle, 0, fsFromEnd);
         If StreamSize = -1 Then
         {$ifdef win32}
@@ -3081,7 +3097,9 @@ Begin
           Error(stReadError, 0);                           { Read beyond end!!! }
         If (Handle = InvalidHandle) Then
           Error(stReadError, 103);                         { File not open }
+        {$ifdef win32}
         SetLastOSError(0);
+        {$endif}
         BytesMoved:= FileRead(Handle, Buf, Count );        { Read from file }
         {$ifdef win32}
         DosStreamError := GetLastOSError;
@@ -3116,7 +3134,9 @@ Begin
      exit;
    If (Handle = InvalidHandle) Then
     Error(stWriteError, 103);                    { File not open }
+   {$ifdef win32}
    SetLastOSError(0);
+   {$endif}
    BytesMoved:=FileWrite(Handle, Buf, Count );   { Write to file }
    {$ifdef win32}
    DosStreamError := GetLastOSError;

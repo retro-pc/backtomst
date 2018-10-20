@@ -42,7 +42,10 @@ Type
     Re0 : Byte;                { Зарезервировано DOS }
     Re1 : Byte;                { Зарезервировано DOS }
     Recs: Byte;                { Число блоков в экстенте }
-    Fat : Array[0..7] Of Word; { Hомера занятых блоков }
+    Case Byte Of
+      1: (Fat  : Array[0..$7] Of Word); { Hомера занятых блоков }
+      2: (FatW : Array[0..$7] Of Word);
+      3: (FatB : Array[0..$F] Of Byte);
   End;
 
 Type
@@ -83,7 +86,7 @@ Type
     Fside : Byte;             { 1 = double }
 (*    Spt   : Byte;             { 5 } *)
     Spt   : Word;
-    Tcount: Word;             { 81 }
+    Tcount: Word;             { 80 }
     Lspt  : Word;             { 40 }
 (*    Lp1   : Word;             { 4 }*)
     Lp1   : Byte;
@@ -196,7 +199,7 @@ Const
     Ssize : 3;             { 3 = 1024 bps }
     Fside : 1;             { 1 = double }
     Spt   : 5;             { 5 }
-    Tcount: 81;            { 81 }
+    Tcount: 80;            { 80 }
     Lspt  : 40;            { 40 }
     Lp1   : 4;             { 4 }
     Lp2   : 15;            { 15 }
@@ -801,7 +804,8 @@ var
   Errc:Byte;
 begin
   Errc:=0;
-  If BlockNumber > BlockCount Then
+//  If BlockNumber > BlockCount Then
+  If BlockNumber > _Dpb.Dsize Then
     FillChar(_pblock(pointer(block))^, 2048, $00)
   Else
   Begin
@@ -836,7 +840,8 @@ var
    Errc:Byte;
 begin
    Errc:=0;
-   If BlockNumber > BlockCount Then
+//   If BlockNumber > BlockCount Then
+   If BlockNumber > _Dpb.Dsize Then
    Else
    Begin
      For b:=0 to 1 do
@@ -913,7 +918,7 @@ begin
       Inc(_Crc, PByteArray(@_Dpb)^[I]);
       {$endif}
     If _Crc <> _Dpb.Crc Then
-    _dpb:=dpb;
+      _dpb:=dpb;
   end
   else
     _dpb:=dpb;
