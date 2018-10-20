@@ -100,7 +100,8 @@ Type
 
 const
   systrk : word = 2;
-  BlockCount : Word = 390;
+{  BlockCount : Word = 390;}
+  BlockCount : Word = 394;
 
 Type
   PMSTDisk = ^TMSTDisk;
@@ -120,9 +121,10 @@ Type
     Function GetErrorDescription(Track, Sect, ErrorNumber:Byte):String;Virtual;  {$Ifdef UseAbstract} Abstract; {$endif}
     Procedure SetBlock(Block:Word;Ofs:Byte);virtual;                             {$Ifdef UseAbstract} Abstract; {$endif}
 {    Function ReadDir:TCatalog;virtual; Turbo Pascal так не умеет!}
-   Procedure ReadDir(var Catalog:TCatalog);virtual;                              {$Ifdef UseAbstract} Abstract; {$endif}
+   Function ReadDir(var Catalog:TCatalog):Boolean;virtual;                       {$Ifdef UseAbstract} Abstract; {$endif}
    Procedure WriteDir(Catalog:TCatalog);virtual;                                 {$Ifdef UseAbstract} Abstract; {$endif}
    Procedure ReadDpb;virtual;                                                    {$Ifdef UseAbstract} Abstract; {$endif}
+   Function GetDiskNameEx:ShortString;virtual;                                   {$Ifdef UseAbstract} Abstract; {$endif}
   End;
 
 Type
@@ -139,7 +141,7 @@ Type
     {$endif}
     {$endif}
   public
-    Constructor Init(_Diskname:Char;Frec:TFormRec);
+    Constructor Init(_DiskName:Char;Frec:TFormRec);
     Destructor Done;virtual;
     Procedure ResetDisk;Virtual;
     Function FormatTrack(Frec:TFormRec):Word;Virtual;
@@ -150,9 +152,10 @@ Type
     Procedure SetBlock(BlockNumber:Word;Ofs:Byte);virtual;
     Function ReadBlock(BlockNumber:Word;block:_pblock):Byte;virtual;
     Function WriteBlock(BlockNumber:Word;block:_pblock):Byte;virtual;
-    Procedure ReadDir(var Catalog:TCatalog);virtual;
+    Function ReadDir(var Catalog:TCatalog):Boolean;virtual;
     Procedure WriteDir(Catalog:TCatalog);virtual;
     Procedure ReadDpb;virtual;
+    Function GetDiskNameEx:ShortString;virtual;
   End;
 
 Type
@@ -172,6 +175,7 @@ Type
     Function FormatTrack(Frec:TFormRec):Word;Virtual;
     Function GetErrorDescription(Track, Sect, ErrorNumber:Byte):String;Virtual;
     Function SeekTrack(Frec:TFormRec):Word;Virtual;
+    Function GetDiskNameEx:ShortString;virtual;
   end;
 
 Const
@@ -191,7 +195,8 @@ Const
     Lp1   : 4;             { 4 }
     Lp2   : 15;            { 15 }
     Lp3   : 0;             { 0 }
-    Dsize : 391;           { blocks - 1 }
+(*    Dsize : 391;           { blocks - 1 }*)
+    Dsize : 394;
     Root  : 127;           { 127 }
     Al0   : 192;           { 192 }
     Al1   : 0;             { 0 }
@@ -257,8 +262,9 @@ End;
 Procedure TMSTDisk.SetBlock(Block:Word;Ofs:Byte);
 begin
 end;
-Procedure TMSTDisk.ReadDir(var Catalog:TCatalog);
+Function TMSTDisk.ReadDir(var Catalog:TCatalog):Boolean;
 begin
+  ReadDir:=True;
 end;
 Procedure TMSTDisk.WriteDir(Catalog:TCatalog);
 begin
@@ -266,6 +272,10 @@ end;
 Procedure TMSTDisk.ReadDpb;
 begin
 end;
+Function TMSTDisk.GetDiskNameEx:ShortString;
+Begin
+  GetDiskNameEx:='MST Disk';
+End;
 {$endif}
 
 Constructor TMicroDOSDisk.Init(_DiskName:Char;Frec:TFormRec);
@@ -384,6 +394,8 @@ Begin
   R.dl:= Disk;
   R.ah:= 0;
   RealIntr($13, R);
+{$else}
+
 {$endif}
 {$endif}
 End;
@@ -765,6 +777,7 @@ var
   buf:TBufType;
   Errc:Byte;
 begin
+  Errc:=0;
   If BlockNumber > BlockCount Then
     FillChar(_pblock(pointer(block))^, 2048, $00)
   Else
@@ -786,7 +799,7 @@ begin
         FillChar(_pblock(pointer(block)+(1024 * b))^, 1024, $E5);
     end;
   End;
-  ReadBlock:=0;
+  ReadBlock:=Errc;
 end;
 
 Function TMicroDOSDisk.WriteBlock(BlockNumber:Word;block:_pblock):Byte;
@@ -813,22 +826,24 @@ begin
    WriteBlock:=Errc;
 end;
 
-Procedure TMicroDOSDisk.ReadDir(var Catalog:TCatalog);
+Function TMicroDOSDisk.ReadDir(var Catalog:TCatalog):Boolean;
 var
    block:_PBlock;
+   Errc:Word;
 begin
    GetMem(Block,2048);
    ResetDisk;
 
    ReadDpb;
 
-   ReadBlock(0, Block);
+   Errc:=ReadBlock(0, Block);
    Move(Block^,Catalog[0],2048);
-
-   ReadBlock(1, Block);
+   Errc:= Errc Or ReadBlock(1, Block);
    Move(Block^,Catalog[64],2048);
 
+
    FreeMem(Block,2048);
+   ReadDir:=Errc = 0;
 end;
 
 Procedure TMicroDOSDisk.WriteDir(Catalog:TCatalog);
@@ -878,6 +893,11 @@ begin
 
 end;
 
+Function TMicroDOSDisk.GetDiskNameEx:ShortString;
+Begin
+  GetDiskNameEx:='MST Disk ' + DiskName + ':';
+End;
+
 constructor TMicroDOSDiskImage.Init(_FileName:String;Frec:TFormRec);
 begin
 {  Inherited Init;}
@@ -906,21 +926,36 @@ end;
 
 Function TMicroDOSDiskImage.ReadSect(Frec:TFormRec;Var Buf:TBufType):Word;
 var
-  L:LongInt;
+  Pos:LongInt;
 begin
   { Frec.Side:=Frec.Track And 1;  }
   { Frec.Track:=Frec.Track ShR 1; }
   { Frec.Sect:=Frec.Sect;         }
-
-  L:=(LongInt(Frec.Track) * LongInt(Frec.Scount) + LongInt(Frec.Sect-1)) * 1024;
+  Pos:=(LongInt(Frec.Track) * LongInt(Frec.Scount) + LongInt(Frec.Sect-1)) * 1024;
   {$ifndef fpc}
   {$I-}
-  Seek(F, (LongInt(Frec.Track) * LongInt(Frec.Scount) + LongInt(Frec.Sect-1)) * 1024);
+//  Seek(F, (LongInt(Frec.Track) * LongInt(Frec.Scount) + LongInt(Frec.Sect-1)) * 1024);
+  Seek(F, Pos);
   BlockRead(F, Buf, SizeOf(Buf));
   {$I+}
   ReadSect:=IOResult;
   {$else}
-  FileSeek(hMST, (LongInt(Frec.Track) * LongInt(Frec.Scount) + LongInt(Frec.Sect-1)) * 1024, fsFromBeginning);
+  If Pos >= FileSeek(hMST, 0, fsFromEnd) Then
+  Begin
+    FillChar(Buf, SizeOf(Buf), 0);
+    ReadSect:=$00;
+    Exit;
+  End;
+//  If FileSeek(hMST, (LongInt(Frec.Track) * LongInt(Frec.Scount) + LongInt(Frec.Sect-1)) * 1024, fsFromBeginning) = -1 Then
+  If FileSeek(hMST, Pos, fsFromBeginning) = -1 Then
+  Begin
+  {$ifdef win32}
+    ReadSect:=GetLastOsError;
+  {$else}
+    ReadSect:=$FF;
+  {$endif}
+    Exit;
+  End;
   If FileRead(hMST, Buf, SizeOf(Buf)) = -1 Then
   {$ifdef win32}
     ReadSect:=GetLastOsError
@@ -984,6 +1019,11 @@ end;
 Function TMicroDOSDiskImage.SeekTrack(Frec:TFormRec):Word;
 Begin
   SeekTrack:=0;
+End;
+
+Function TMicroDOSDiskImage.GetDiskNameEx:ShortString;
+Begin
+  GetDiskNameEx:='MST Disk image ' + SysUtils.ExtractFileName(FileName);
 End;
 
 End.

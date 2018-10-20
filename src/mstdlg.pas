@@ -6,7 +6,6 @@
 {  mailto:super386@rambler.ru                    }
 {                                                }
 {************************************************}
-{.$DEFINE DEB}
 
 {$ifdef fpc}
 {$A1}
@@ -30,7 +29,8 @@ Type
   TMSTFileList = Object(TFileList)
     constructor Init(var Bounds: TRect; AScrollBar: PScrollBar);
     procedure SetData(var Rec); virtual;
-    Procedure ReadDir;virtual;
+    procedure ReadDir;virtual;
+    function IsSelected(Item: Sw_Integer):Boolean;virtual;
     {$ifdef fpc}
     function GetText(Item: LongInt; MaxLen: LongInt): ShortString; virtual;
     {$else}
@@ -39,7 +39,7 @@ Type
     function GetKey(var S: String): Pointer; virtual;
     procedure HandleEvent(Var Event: TEvent); virtual;
     procedure GetData(var Rec); virtual;
-
+    procedure Draw;
   end;
 
 Type
@@ -55,7 +55,7 @@ Type
     Destructor Done;Virtual;
     Procedure HandleEvent(Var Event:TEvent);Virtual;
     Procedure SaveFile;virtual;
-    Procedure SaveFileAs(FileName:ShortString);virtual;
+    Procedure SaveFileAs(FileName:ShortString; P:Pointer);virtual;
     Procedure AddFile(FileName:ShortString);virtual;
     Procedure ViewFile;virtual;
     Procedure DeleteFile;Virtual;
@@ -91,7 +91,6 @@ Implementation
 
 Uses App, Dos, MstConst, FViewer;
 
-
 type
   PSearchRec = ^TSearchRec;
 
@@ -99,8 +98,9 @@ type
   TMSTSearchRec = packed record
 {    Attr: Longint;}
     User: Byte;
-    Time: Longint;
+{    Time: Longint;}
     Size: Longint;
+    Selected: Boolean;
     case Integer of
       1:(Name: string[12]);
       2:(Res:Char;FName:Array[0..7] Of Char;Dot:Char;FExt:Array[0..2] Of Char);
@@ -130,20 +130,16 @@ Var
   I: Word;
   Catalog:TCatalog;
   J: Word;
-  _F:File;
 
   fExist:Boolean;
 
 begin
 
-  PMSTShortWindow(Owner)^.MSTDisk^.ReadDir(Catalog);
-
-  {$IFDEF DEB}
-  Assign(_F,'1.DEB');
-  Rewrite(_F,1);
-  BlockWrite(_F,Catalog,SizeOf(Catalog));
-  Close(_F);
-  {$ENDIF}
+  While not PMSTShortWindow(Owner)^.MSTDisk^.ReadDir(Catalog) Do
+  Begin
+    { Заглушка }
+    Break;
+  End;
 
   Filelist:=New(PCPMFileCollection,Init(5, 5));
 
@@ -209,7 +205,8 @@ begin
 
   While (P <> nil) and (I <= (SizeOf(TCatalog) div SizeOf(TEntry)) - 1) do { На первом проходе заполняем список имен файлов }
   begin
-    if Catalog[I].Recs < $80 Then
+//    if Catalog[I].Recs < $80 Then
+    if (Catalog[I].Recs < $80) And ((Catalog[I].User < $20) or (Catalog[I].User = $E5)) Then
     begin
         S.Name:= Catalog[I].Name + '.' + Char(Byte(Catalog[I].Ext[0]) And $7F)
                                        + Char(Byte(Catalog[I].Ext[1]) And $7F)
@@ -219,6 +216,7 @@ begin
         FillChar(P^,SizeOf(P^), 0);
         P^.Name:=UpperCase(String(S.Name));
         P^.User:=S.User;
+        P^.Selected:=False;
         FileList^.Insert(P);
 
     end;
@@ -250,7 +248,7 @@ begin
 
   Newlist(Filelist);
 end;
-
+{---------------------------------------------------------}
 function TMSTFileList.GetKey(var S: String): Pointer;
 const
   SR: TMSTSearchRec = ();
@@ -265,7 +263,7 @@ end;
 begin
   GetKey := @S;
 end;
-
+{---------------------------------------------------------}
 {$ifdef fpc}
 function TMSTFileList.GetText(Item: LongInt; MaxLen: LongInt): ShortString;
 {$else}
@@ -286,11 +284,14 @@ begin
   {$endif}
   GetText := S;
 end;
-
-
+{---------------------------------------------------------}
 procedure TMSTFileList.HandleEvent(Var Event: TEvent);
+Var
+  P:PMSTSearchRec;
+  Item:LongInt;
 begin
-  If Event.What = evCommand Then
+  Case Event.What of
+  evCommand:;
 {    Case Event.Command Of
       cmSave:
       Begin
@@ -298,20 +299,113 @@ begin
         ClearEvent(Event);
       End;
     End}
-  Else If (Event.What = evKeyDown) Then
-  Begin
-    Case Event.Keycode Of
-      kbIns:SelectItem(Focused);
+  evKeyDown:
+    Begin
+      Case Event.Keycode Of
+        kbIns:SelectItem(Focused);
+        kbGrayAst:
+        Begin
+          If List^.Count > 0 Then
+          Begin
+            P := PMSTSearchRec(@P);
+            For Item:=0 to List^.Count - 1 do
+            Begin
+              P := List^.At(Item);
+              P^.Selected:=not P^.Selected;
+            End;
+            Draw;
+          End
+        End;
+        kbGrayMinus:
+        Begin
+          If List^.Count > 0 Then
+          Begin
+            P := PMSTSearchRec(@P);
+            For Item:=0 to List^.Count - 1 do
+            Begin
+              P := List^.At(Item);
+              P^.Selected:=False;
+            End;
+            Draw;
+          End
+        End;
+
+      End;
+    End;
+  evBroadCast:
+    Case Event.Command of
+      cmListItemSelected:
+        Begin
+          If List^.Count > 0 Then
+          Begin
+            P := PMSTSearchRec(@P);
+            P := List^.At(Focused);
+            P^.Selected:=not P^.Selected;
+            If List^.Count - 1 > Focused Then
+              Inc(Focused);
+            Draw;
+          End;
+        End;
     End;
   End;
   TSortedListBox.HandleEvent(Event);
 end;
-
+{---------------------------------------------------------}
 procedure TMSTFileList.GetData(var Rec);
 begin
   PMSTSearchRec(Rec):=PMSTSearchRec(List^.At(Focused));
 end;
-
+{---------------------------------------------------------}
+function TMSTFileList.IsSelected(Item: Sw_Integer):Boolean;
+Begin
+  IsSelected:=PMSTSearchRec(List^.At(Item))^.Selected;
+End;
+{---------------------------------------------------------}
+PROCEDURE TMSTFileList.Draw;
+VAR  I, J, ColWidth, Item, Indent, CurCol: Sw_Integer;
+     Color: Word; SCOff: Byte;
+     Text: String; B: TDrawBuffer;
+BEGIN
+   ColWidth := Size.X DIV NumCols + 1;                { Calc column width }
+   If (HScrollBar = Nil) Then Indent := 0 Else        { Set indent to zero }
+     Indent := HScrollBar^.Value;                     { Fetch any indent }
+   For I := 0 To Size.Y - 1 Do Begin                  { For each line }
+     For J := 0 To NumCols-1 Do Begin                 { For each column }
+       Item := J*Size.Y + I + TopItem;                { Process this item }
+       CurCol := J*ColWidth;                          { Current column }
+       If (State AND (sfSelected + sfActive) =
+       (sfSelected + sfActive)) AND (Focused = Item)  { Focused item }
+       AND (Range > 0) Then Begin
+       If IsSelected(Item) Then Color:=(GetColor(4) and $0F) + (GetColor(3) and $F0)  Else
+         Color := GetColor(3);                        { Focused colour }
+         SetCursor(CurCol+1,I);                       { Set the cursor }
+         SCOff := 0;                                  { Zero colour offset }
+       End Else If (Item < Range) AND IsSelected(Item){ Selected item }
+       Then Begin
+         Color := GetColor(4);                        { Selected color }
+         SCOff := 2;                                  { Colour offset=2 }
+       End Else Begin
+         Color := GetColor(2);                        { Normal Color }
+         SCOff := 4;                                  { Colour offset=4 }
+       End;
+      MoveChar(B[CurCol], ' ', Color, ColWidth);     { Clear buffer }
+       If (Item < Range) Then Begin                   { Within text range }
+         Text := GetText(Item, ColWidth + Indent);    { Fetch text }
+         Text := Copy(Text, Indent, ColWidth);        { Select right bit }
+         MoveStr(B[CurCol+1], Text, Color);           { Transfer to buffer }
+         If ShowMarkers Then Begin
+           WordRec(B[CurCol]).Lo := Byte(
+             SpecialChars[SCOff]);                        { Set marker character }
+           WordRec(B[CurCol+ColWidth-2]).Lo := Byte(
+             SpecialChars[SCOff+1]);                        { Set marker character }
+         End;
+       End;
+       MoveChar(B[CurCol+ColWidth-1], #179,
+         GetColor(5), 1);                             { Put centre line marker }
+     End;
+     WriteLine(0, I, Size.X, 1, B);                 { Write line to screen }
+   End;
+END;
 {---------------------------------------------------------}
 {Constructor TMSTShortWindow.Init(Dir,Mask:String);}
 Constructor TMSTShortWindow.Init(lMSTDisk:PMSTDisk);
@@ -323,34 +417,17 @@ Begin
 
   Desktop^.GetExtent(R);
   R.B.X:= R.A.X + ((R.B.X - R.A.X) div 2);
-
-{  TWindow.GetExtent(R);}
-
   R.B.Y:=R.B.Y-1;
-{  R.Assign(0,0,40,22);}
-
-{  Inherited Init(R,Dir);}
-  Inherited Init(R,'MST Disk');
-
-  {  R.Assign(39,1,40,21);
-  Sb:=New(PScrollBar,Init(R));}
-
-{  R.Assign(1,1,39,2);
-  ST:=New(PStaticText,Init(R,Dir[1]+Dir[2]+#25' Имя     │    Имя     │    Имя'));
-  Insert(ST);}
+  Inherited Init(R, lMSTDisk^.GetDiskNameEx);
 
   MSTDisk:= lMSTDisk;
 
   R.Assign(1 ,1 {2}, Size.X - 1, Size.Y - 1);
   Lb:=New(PMSTFileList,Init(R, Nil));
-
   Lb^.SetState(sfCursorVis, False);
-
   Insert(Lb);
+  Lb^.ReadDir;
 
-{  Lb^.ReadDirectory(Dir,Mask);}
-  {  SetState(sfShadow,False);}
-   Lb^.ReadDir;
 End;
 {---------------------------------------------------------}
 Destructor TMSTShortWindow.Done;
@@ -382,15 +459,27 @@ Begin
         DeleteFile;
         ClearEvent(Event);
       End;
-      cmCopyFileDOS:
+{      cmCopyFileDOS:
       begin
         AddFile(String(Event.InfoPtr^));
         ClearEvent(Event);
       end;
+}
     End;
     evKeyDown:
     Case Event.KeyCode of
       kbF5: CopyFile;
+{      kbF4:
+      Begin
+        ViewFile;
+        ClearEvent(Event);
+      End;
+}
+      kbCtrlR:
+      Begin
+        Lb^.ReadDir;
+        ClearEvent(Event);
+      End;
     End;
     evBroadCast:
     Case Event.Command Of
@@ -400,14 +489,6 @@ Begin
         ClearEvent(Event);
       end;
     End;
-{    evKeyDown:
-    Case Event.Keycode Of
-      kbF4:
-      Begin
-        ViewFile;
-        ClearEvent(Event);
-      End;
-    End;}
   End;
   Inherited HandleEvent(Event);
 End;
@@ -417,36 +498,108 @@ Var
   Catalog:TCatalog;
   P:PMSTSearchRec;
   I:Word;
+  Rslt:Word;
+  ExistSelected:Boolean;
+  ExistUserFiles:Boolean;
+  Item:LongInt;
 begin
+
+  ExistSelected:=False;
+
   P := PMSTSearchRec(@P);
 
-  Lb^.GetData(P);
+  For Item:=0 to Lb^.List^.Count - 1 do
+    ExistSelected := ExistSelected Or Lb^.IsSelected(Item);
 
-  MSTDisk^.ReadDir(Catalog);
+  If ExistSelected Then
+  Begin
+     ExistUserFiles:=False;
+     For Item:=0 to Lb^.List^.Count - 1 do
+       ExistUserFiles := ExistUserFiles Or ((Lb^.IsSelected(Item)) And (PMSTSearchRec(Lb^.List^.At(Item))^.User <> $E5));
+     If ExistUserFiles Then
+     Begin
+       While not MSTDisk^.ReadDir(Catalog) do
+       Begin
 
-  If P^.User = $E5 Then
-    Exit;
+         Rslt:=MessageBox(#3'Catalog not ready, retry?', Nil, mfError +
+           mfYesButton Or mfNoButton);
+         If Rslt = cmYes Then
+         Begin
+           MSTDisk^.ResetDisk;
+         End
+         Else
+           Exit;
+       End;
 
-  I:=0;
+       For Item:=0 to Lb^.List^.Count - 1 do
+       Begin
+         P := PMSTSearchRec(Lb^.List^.At(Item));
+         If (P^.Selected) And (P^.User <> $E5) Then
+         Begin
+           I:=0;
 
-  While (I <= (SizeOf(TCatalog) div SizeOf(TEntry)) - 1) do
-  begin
+           While (I <= (SizeOf(TCatalog) div SizeOf(TEntry)) - 1) do
+           begin
 
-    Catalog[I].Ext[0]:=Char(Byte(Catalog[I].Ext[0]) And $7F);
-    Catalog[I].Ext[1]:=Char(Byte(Catalog[I].Ext[1]) And $7F);
-    Catalog[I].Ext[2]:=Char(Byte(Catalog[I].Ext[2]) And $7F);
+             Catalog[I].Ext[0]:=Char(Byte(Catalog[I].Ext[0]) And $7F);
+             Catalog[I].Ext[1]:=Char(Byte(Catalog[I].Ext[1]) And $7F);
+             Catalog[I].Ext[2]:=Char(Byte(Catalog[I].Ext[2]) And $7F);
 
-    If ((Catalog[I].Name = P^.FName) and (Catalog[I].Ext = P^.FExt) and (Catalog[I].User = P^.User)) Then
-      Catalog[I].User:=$E5;
-    I:=I+1;
-  end;
+             If ((Catalog[I].Name = P^.FName) and (Catalog[I].Ext = P^.FExt) and (Catalog[I].User = P^.User)) Then
+               Catalog[I].User:=$E5;
+             I:=I+1;
+           end;
 
-  MSTDisk^.WriteDir(Catalog);
+         End;
+
+       End;
+
+       MSTDisk^.WriteDir(Catalog);
+
+     End;
+  End
+  Else
+  Begin
+    Lb^.GetData(P);
+    If P^.User = $E5 Then
+      Exit;
+
+    While not MSTDisk^.ReadDir(Catalog) do
+    Begin
+
+      Rslt:=MessageBox(#3'Catalog not ready, retry?', Nil, mfError +
+        mfYesButton Or mfNoButton);
+      If Rslt = cmYes Then
+      Begin
+        MSTDisk^.ResetDisk;
+      End
+      Else
+        Exit;
+
+    End;
+
+    I:=0;
+
+    While (I <= (SizeOf(TCatalog) div SizeOf(TEntry)) - 1) do
+    begin
+
+      Catalog[I].Ext[0]:=Char(Byte(Catalog[I].Ext[0]) And $7F);
+      Catalog[I].Ext[1]:=Char(Byte(Catalog[I].Ext[1]) And $7F);
+      Catalog[I].Ext[2]:=Char(Byte(Catalog[I].Ext[2]) And $7F);
+
+      If ((Catalog[I].Name = P^.FName) and (Catalog[I].Ext = P^.FExt) and (Catalog[I].User = P^.User)) Then
+        Catalog[I].User:=$E5;
+      I:=I+1;
+    end;
+
+    MSTDisk^.WriteDir(Catalog);
+
+  End;
 
   Lb^.ReadDir;
 end;
 {---------------------------------------------------------}
-Procedure TMSTShortWindow.SaveFileAs(FileName:ShortString);
+Procedure TMSTShortWindow.SaveFileAs(FileName:ShortString; P:Pointer);
 Var
   Catalog:TCatalog;
   _F:File;
@@ -458,15 +611,29 @@ Var
 
   FileSize:LongInt;
 
-  P:PMSTSearchRec;
-
+{  P:PMSTSearchRec;}
+  Rslt:Word;
 begin
 
+  While not MSTDisk^.ReadDir(Catalog) do
+  Begin
+
+    Rslt:=MessageBox(#3'Catalog not ready, retry?', Nil, mfError +
+      mfYesButton Or mfNoButton);
+    If Rslt = cmYes Then
+    Begin
+      MSTDisk^.ResetDisk;
+    End
+    Else
+      Exit;
+
+  End;
+
+{
   P := PMSTSearchRec(@P);
-
   Lb^.GetData(P);
+}
 
-  MSTDisk^.ReadDir(Catalog);
 
   Assign(_F, FileName);
   ReWrite(_F,1);
@@ -482,7 +649,7 @@ begin
     Catalog[I].Ext[1]:=Char(Byte(Catalog[I].Ext[1]) And $7F);
     Catalog[I].Ext[2]:=Char(Byte(Catalog[I].Ext[2]) And $7F);
 
-    If ((UpperCase(Catalog[I].Name) = P^.FName) and (UpperCase(Catalog[I].Ext) = P^.FExt) and (Catalog[I].User = P^.User)) Then
+    If ((UpperCase(Catalog[I].Name) = PMSTSearchRec(P)^.FName) and (UpperCase(Catalog[I].Ext) = PMSTSearchRec(P)^.FExt) and (Catalog[I].User = PMSTSearchRec(P)^.User)) Then
       pcat^.Insert(@Catalog[I]);
     I:=I+1;
   end;
@@ -528,7 +695,7 @@ begin
   for w:=1 to Length(FileName) do
     if FileName[w] in IllegalChars Then FileName[w]:='_';
 
-  SaveFileAs(FileName);
+  SaveFileAs(FileName, P);
 
 {   Dispose(pcat, Done);}
   {$endif}
@@ -547,7 +714,7 @@ begin
   Lb^.GetData(P);
 
   FileName:=GetTempFileName;
-  SaveFileAs(FileName);
+  SaveFileAs(FileName, P);
   If SysUtils.FileExists(FileName) Then
   begin
 {     R.Assign(0,0,72,15);  }
@@ -586,19 +753,33 @@ Var
   ExN:LongInt;
   FatRec:Byte;
   Errc:Byte;
+  Rslt:Word;
+  S:String;
 begin
   // FileName:='C:\UTIL\FPC\SAVE\MST.NEW\TV\fdrawcmd.ppu';
 
-  MSTDisk^.ReadDir(Catalog);
+  While not MSTDisk^.ReadDir(Catalog) do
+  Begin
+
+    Rslt:=MessageBox(#3'Catalog not ready, retry?', Nil, mfError +
+      mfYesButton Or mfNoButton);
+    If Rslt = cmYes Then
+    Begin
+      MSTDisk^.ResetDisk;
+    End
+    Else
+      Exit;
+
+  End;
 
   { TODO: Добавить проверку на наличие места в каталоге   }
   { TODO: Добавить проверку на то что файл уже существует }
 
   FileName:=UpperCase(FileName);
 
-  If Self.FileExists(ExtractFileName(FileName) + ExtractFileExt(FileName), 0) Then
+  If Self.FileExists(LeftStr(StdDlg.ExtractFileName(FileName), 8) + SysUtils.ExtractFileExt(FileName), 0) Then
   Begin
-    MessageBox('File'#13 + ExtractFileName(FileName) + ExtractFileExt(FileName) + #13'for user 0 exist, can''t add file', Nil, mfError +
+    MessageBox('File'#13 + LeftStr(StdDlg.ExtractFileName(FileName), 8) + SysUtils.ExtractFileExt(FileName) + #13'for user 0 exist, can''t add file', Nil, mfError +
       mfOKButton);
     Exit;
   End;
@@ -606,7 +787,8 @@ begin
   { Не совсем верный подсчет количества незанятых экстентов }
   { Должен ли драйвер ФС обнулять незанятые записи FAT ???  }
   I:=0;
-  FreeVec:=BlockCount - 2;
+//  FreeVec:=BlockCount - 2;
+  FreeVec:=(MSTDisk^._Dpb.DSize + 1) - 2;
 
   FillChar(Frm_Vec, SizeOf(Frm_Vec), 0);
   Frm_Vec[0]:=1;
@@ -617,7 +799,7 @@ begin
     if Catalog[I].User <> $E5 Then
     begin
       For J:=0 to 7 do
-        If (Catalog[I].Fat[J] < BlockCount) And (Catalog[I].Fat[J] > 1) Then
+        If (Catalog[I].Fat[J] <= BlockCount) And (Catalog[I].Fat[J] > 1) Then
         begin
           Frm_Vec[Catalog[I].Fat[J]]:=1;
           Dec(FreeVec);
@@ -634,13 +816,13 @@ begin
   {$I+}
   If IOResult <> 0 Then
   Begin
-    FileName:=ExtractFileName(FileName) + ExtractFileExt(FileName);
+    FileName:=StdDlg.ExtractFileName(FileName) + SysUtils.ExtractFileExt(FileName);
     MessageBox('Error open file: '#13 + FileName, nil, mfError or mfOKButton);
     Exit;
   End;
   If LongInt(FreeVec) * 2048 < FileSize Then
   Begin
-    FileName:=ExtractFileName(FileName) + ExtractFileExt(FileName);
+    FileName:=StdDlg.ExtractFileName(FileName) + SysUtils.ExtractFileExt(FileName);
     MessageBox('Not enough free space for file: '#13 + FileName, nil, mfError or mfOKButton);
     Exit;
   End;
@@ -663,8 +845,8 @@ begin
         begin
           FillChar(Catalog[I], SizeOf(Catalog[I]), 0);
 //          Catalog[I].User:=0;
-          Catalog[I].Name:=LeftStr(ExtractFileName(FileName) + '        ', 8);
-          Catalog[I].Ext:=Copy(ExtractFileExt(FileName) + '   ', 2, 3);
+          Catalog[I].Name:=LeftStr(StdDlg.ExtractFileName(FileName) + '        ', 8);
+          Catalog[I].Ext:=Copy(SysUtils.ExtractFileExt(FileName) + '   ', 2, 3);
           Catalog[I].Exn:=(Exn and $1F);
           Catalog[I].Re1:=(Exn shr $5);
           Catalog[I].Recs:=0;
@@ -702,7 +884,7 @@ begin
     begin
       While (Frm_Vec[J] = 1) and (J < BlockCount) do
         Inc(J);
-      If J < BlockCount Then
+      If J <= BlockCount Then
       Begin
         Catalog[I].Fat[FatRec]:=J;
         Frm_Vec[J]:=1;
@@ -710,6 +892,7 @@ begin
       End
       else
       Begin
+        System.Close(F);
         MessageBox('Not enough free space for file: '#13 + FileName, nil, mfError or mfOKButton);
         Exit;
       End;
@@ -742,38 +925,94 @@ Var
   P:PMSTSearchRec;
   W:Word;
   FileNames:Array[0..1] Of ShortString;
+  ExistSelected:Boolean;
+  Item:LongInt;
 Const
   IllegalChars:set of char = ['*',':','?','<','>','|','"','/','\'];
 begin
 
+  ExistSelected:=False;
   P := PMSTSearchRec(@P);
 
-  Lb^.GetData(P);
+  // Проверяем, есть ли выбранные файлы по INS
 
-  FileName:=Trim(P^.FName) + '.' + Trim(P^.FExt);
+  For Item:=0 to Lb^.List^.Count - 1 do
+    ExistSelected := ExistSelected Or Lb^.IsSelected(Item);
+//    ExistSelected := ExistSelected Or PMSTSearchRec(Lb^.List^.At(Item))^.Selected;
 
-  for w:=1 to Length(FileName) do
-    if FileName[w] in IllegalChars Then FileName[w]:='_';
-  FileNames[0]:=FileName;
+  If ExistSelected Then
+  Begin
 
-  FileName:=GetTempFileName;
-  FileNames[1]:=FileName;
+    For Item:=0 to Lb^.List^.Count - 1 do
+    Begin
+      P := PMSTSearchRec(Lb^.List^.At(Item));
+      If P^.Selected Then
+      Begin
 
-  SaveFileAs(FileName);
-  If SysUtils.FileExists(FileName) Then
-  begin
-//    Message(Application, evCommand, cmCopyFileMST, @FileNames);
-    Message(Application, evBroadCast, cmCopyFileMST, @FileNames);
-  end;
+        FileName:=Trim(P^.FName) + '.' + Trim(P^.FExt);
+        for w:=1 to Length(FileName) do
+          if FileName[w] in IllegalChars Then FileName[w]:='_';
+        FileNames[0]:=FileName;
 
+        FileName:=GetTempFileName;
+        FileNames[1]:=FileName;
+
+        SaveFileAs(FileName, P);
+        If SysUtils.FileExists(FileName) Then
+          Message(Application, evBroadCast, cmCopyFileMST, @FileNames);
+
+        P^.Selected:=False;
+
+      End;
+    End;
+
+    Draw;
+
+  End
+  Else
+  Begin
+
+    Lb^.GetData(P);
+    FileName:=Trim(P^.FName) + '.' + Trim(P^.FExt);
+
+    for w:=1 to Length(FileName) do
+      if FileName[w] in IllegalChars Then FileName[w]:='_';
+    FileNames[0]:=FileName;
+
+    FileName:=GetTempFileName;
+    FileNames[1]:=FileName;
+
+    SaveFileAs(FileName, P);
+    If SysUtils.FileExists(FileName) Then
+    begin
+  //    Message(Application, evCommand, cmCopyFileMST, @FileNames);
+      Message(Application, evBroadCast, cmCopyFileMST, @FileNames);
+    end;
+  End;
 end;
 {---------------------------------------------------------}
 Function TMSTShortWindow.FileExists(FileName: ShortString; User: Byte):Boolean;
 Var
   Catalog:TCatalog;
   I:Word;
+  Rslt:Word;
 begin
-  MSTDisk^.ReadDir(Catalog);
+
+  While not MSTDisk^.ReadDir(Catalog) do
+  Begin
+
+    Rslt:=MessageBox(#3'Catalog not ready, retry?', Nil, mfError +
+      mfYesButton Or mfNoButton);
+    If Rslt = cmYes Then
+    Begin
+      MSTDisk^.ResetDisk;
+    End
+    Else
+    Begin
+      FileExists:=True;
+      Exit;
+    End;
+  End;
 
   I:=0;
 
@@ -848,6 +1087,5 @@ begin
     Else
       Compare := -1;
 end;
-
 
 end.

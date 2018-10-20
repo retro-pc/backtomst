@@ -1,4 +1,3 @@
-{.$DEFINE DEB}
 {************************************************}
 {                                                }
 {  Программа для работы с дисками CP/M-80 и      }
@@ -21,11 +20,13 @@
 {$endif}
 
 Uses App, Objects, Views, Menus, Drivers, Dialogs, Stddlg,
-  Msgbox, GrowView, AppWin, Service, Mstconst, MSTDisk, AppWinEx, MstDlg, DosDlg, FV_Const, SysUtils
+  Msgbox, GrowView, AppWin,  Mstconst, MSTDisk, AppWinEx, MstDlg, DosDlg, FV_Const, SysUtils
 {$ifdef fpc}
 {$ifndef win32}
 , Go32
 {$endif}
+{$else}
+, Service
 {$endif}
 ;
 
@@ -313,7 +314,8 @@ Begin
 
     MSTDisk^.WriteDir(Catalog);
 
-    _Dpb.Dsize:=BlockCount-1;
+{    _Dpb.Dsize:=BlockCount-1;}
+    _Dpb.Dsize:=BlockCount;
     _Dpb.TCount:=Frec.TCount;
     _Dpb.Crc:=$66;
     For I:=0 To 30 Do
@@ -356,6 +358,15 @@ Begin
   FileExt:=ExtractFileExt(FileName);
   If (Length(FileExt) = 0) or (FileExt = '.') Then
     FileName:=ChangeFileExt(FileName, '.kdi');
+
+  If FileExists(FileName) Then
+  Begin
+    Rslt:= MessageBox('File exists, overwrite?', Nil, mfError +
+      mfOKCancel);
+    If Rslt = cmCancel Then
+      Exit;
+  End;
+
   Assign(F, FileName);
   ReWrite(F);
   If DiskName[0] > #1 Then
@@ -411,7 +422,7 @@ Begin
           { Нажали отмена - закроем файл без записи }
           Dispose(MSTDisk, Done);
           Dispose(D,Done);
-          Close(F);          
+          Close(F);
           Exit;
         End;
       End;
@@ -457,7 +468,7 @@ Begin
      MSTDisk:= New(PMicroDOSDiskImage, Init(DiskName, Frec))
   else
      MSTDisk:= New(PMicroDOSDisk, Init(DiskName[1], Frec));
-     
+
   R.Assign( 2, 4, 38, 5 );
   GV1 := New( PGrowView, Init( R, (Frec.TCount ShL 1)-1 ));
 
@@ -468,7 +479,7 @@ Begin
   For Track:=0 To (Frec.Tcount ShL 1)-1 Do
   Begin
     Frec.Track:=Track;
-    MSTDisk^.SeekTrack(Frec);    
+    MSTDisk^.SeekTrack(Frec);
     GV1^.Update(Track);
     Sect:=1;
     While Sect <= Frec.SCount Do
@@ -583,9 +594,6 @@ end;
 Procedure TMSTApplication.ListDisk;
 var
    Catalog:TCatalog;
-{$IFDEF DEB}
-   _F:File;
-{$ENDIF}
    MSTDisk:PMSTDisk;
 begin
   If DiskName[0] > #1 Then
@@ -594,13 +602,6 @@ begin
      MSTDisk:= New(PMicroDOSDisk, Init(DiskName[1], Frec));
 
   { MSTDisk^.ReadDir(Catalog); }
-  {$IFDEF DEB}
-  Assign(_F,'1.DEB');
-  Rewrite(_F,1);
-  BlockWrite(_F,Catalog,SizeOf(Catalog));
-  Close(_F);
-  {$ENDIF}
-
   LeftWindow:=New(PMSTShortWindow, Init(MSTDisk));
 
   Desktop^.Insert(LeftWindow);

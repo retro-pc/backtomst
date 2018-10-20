@@ -27,9 +27,12 @@ const
   cmListDisk   = 178;
   cmView       = 179;
   cmDelete     = 13;
-  
+
   cmCopyFileDOS = 180;
   cmCopyFileMST = 181;
+
+Const
+  kbGrayAst     = $372A;
 
 implementation
 

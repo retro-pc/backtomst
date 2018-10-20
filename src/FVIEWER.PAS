@@ -1719,6 +1719,7 @@ begin
   TabSize := GetTabSize;
   MaxW := 0;
   CE;
+  {$R-}
   for I := 0 to Size.Y-1 do
   begin
     w := 0;
@@ -1731,6 +1732,7 @@ begin
     if MaxW < w then
       MaxW := w;
   end;
+  {$R+}
   Dec(MaxW, Size.X);
 
   if MaxW < 0 then

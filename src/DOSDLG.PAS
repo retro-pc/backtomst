@@ -24,6 +24,7 @@ Type
     constructor Init(var Bounds: TRect; AScrollBar: PScrollBar);
     procedure ReadDirectory(AWildCard: PathStr);virtual;
     Function GetText(Item, MaxLen: Sw_Integer): String;virtual;
+    function IsSelected(Item: Sw_Integer):Boolean;virtual;
   end;
 
 Type
@@ -68,12 +69,46 @@ Implementation
 
 Uses App, MsgBox, FVConsts, FViewer, MSTConst;
 
+Type
+  TDOSSearchRec = packed record
+    Attr: Longint;
+    Time: Longint;
+    Size: Longint;
+    Selected:Boolean;
+    Name: string[MaxFName];
+  end;
+  PDOSSearchRec = ^TDOSSearchRec;
+
+
+Function TruncPathStr(Str: String; MaxLength: Integer):String;
+Var
+  nLength:Integer;
+Begin
+  nLength:=Length(Str);
+  If nLength > MaxLength Then
+  Begin
+    If (Str[2] = ':') And (Str[3] = '\') Then
+    Begin
+      TruncPathStr:=Copy(Str, 1, 3) + '...' + RightStr(Str, MaxLength - 6);
+    End
+    Else
+    Begin
+      If (Str[1] = '\') And (Str[2] = '\') Then
+        TruncPathStr:=Copy(Str, 1, 2) + '...' + RightStr(Str, MaxLength - 5)
+      Else
+        TruncPathStr:=RightStr(Str, MaxLength);
+    End
+  End
+  Else
+    TruncPathStr:=Str;
+End;
+
 function TDOSFileList.GetText(Item,MaxLen: Sw_Integer): String;
 var
   S: String;
-  SR: PSearchRec;
+  SR: PDOSSearchRec;
 begin
-  SR := PSearchRec(List^.At(Item));
+  SR := PDOSSearchRec(List^.At(Item));
   S := SR^.Name;
 {  if SR^.Attr and Directory <> 0 then
   begin
@@ -111,22 +146,22 @@ Var
   Name2,Name1 : NameStr;
   Ext2,Ext1   : ExtStr;
 begin
-  If PSearchRec(Key1)^.Name = PSearchRec(Key2)^.Name Then Compare := 0
-  Else If PSearchRec(Key1)^.Name = '..' Then Compare := -1
-  Else If PSearchRec(Key2)^.Name = '..' Then Compare := 1
-  Else If (PSearchRec(Key1)^.Attr And Directory <> 0) And
-          (PSearchRec(Key2)^.Attr And Directory = 0) Then Compare := -1
-  Else If (PSearchRec(Key2)^.Attr And Directory <> 0) And
-          (PSearchRec(Key1)^.Attr And Directory = 0) Then Compare := 1
-    {  else if PSearchRec(Key1)^.Name > PSearchRec(Key2)^.Name then
+  If PDOSSearchRec(Key1)^.Name = PDOSSearchRec(Key2)^.Name Then Compare := 0
+  Else If PDOSSearchRec(Key1)^.Name = '..' Then Compare := -1
+  Else If PDOSSearchRec(Key2)^.Name = '..' Then Compare := 1
+  Else If (PDOSSearchRec(Key1)^.Attr And Directory <> 0) And
+          (PDOSSearchRec(Key2)^.Attr And Directory = 0) Then Compare := -1
+  Else If (PDOSSearchRec(Key2)^.Attr And Directory <> 0) And
+          (PDOSSearchRec(Key1)^.Attr And Directory = 0) Then Compare := 1
+    {  else if PDOSSearchRec(Key1)^.Name > PDOSSearchRec(Key2)^.Name then
     Compare := 1
   else Compare := -1;}
   Else
   Begin
-    FSplit(UpperCase(PSearchRec(Key1)^.Name),Dir1,Name1,Ext1);
-    FSplit(UpperCase(PSearchRec(Key2)^.Name),Dir2,Name2,Ext2);
-    If (PSearchRec(Key2)^.Attr And Directory <> 0) And
-       (PSearchRec(Key1)^.Attr And Directory <> 0) Then
+    FSplit(UpperCase(PDOSSearchRec(Key1)^.Name),Dir1,Name1,Ext1);
+    FSplit(UpperCase(PDOSSearchRec(Key2)^.Name),Dir2,Name2,Ext2);
+    If (PDOSSearchRec(Key2)^.Attr And Directory <> 0) And
+       (PDOSSearchRec(Key1)^.Attr And Directory <> 0) Then
       If Name1>Name2 Then Compare:=1 Else Compare:=-1
     Else
     Begin
@@ -150,17 +185,18 @@ end;
 {---------------------------------------------------------}
 Procedure TDOSFileList.GetData(var Rec);
 begin
-   PSearchRec(Rec):=PSearchRec(List^.At(Focused));
+   PDOSSearchRec(Rec):=PDOSSearchRec(List^.At(Focused));
 end;
 {---------------------------------------------------------}
 procedure TDOSShortWindow.ChangeDir;
 Var
-  P:PSearchRec;
+  P:PDOSSearchRec;
   CurDirName:NameStr;
   I:LongInt;
   isRootDir:Boolean;
+  NewTitle:ShortString;
 begin
-  P:= PSearchRec(@P);
+  P:= PDOSSearchRec(@P);
   mFileList^.GetData(P);
   if (P^.Attr And Directory) <> 0 Then
   begin
@@ -176,9 +212,21 @@ begin
     end;
 
     CurDir:=ExpandFileName(CurDir + p^.name);
+
     While CurDir[Length(Curdir)] = '\' do
       CurDir:=LeftStr(CurDir, Length(CurDir) - 1);
+
     CurDir:=CurDir + '\';
+
+    If Length(CurDir) = 3 Then
+      NewTitle:=TruncPathStr(CurDir, Size.X - 16)
+    Else
+      NewTitle:=TruncPathStr(LeftStr(CurDir, Length(CurDir) - 1), Size.X - 16);
+
+    DisposeStr(Title);
+    Title :=NewStr(NewTitle);
+    Redraw;
+
     mFileList^.ReadDirectory(CurDir + CurMask);
 
     If isRootDir And (Length(CurDirName) > 0) Then
@@ -186,7 +234,7 @@ begin
       begin
         For I:=0 To List^.Count - 1 Do
         Begin
-          P:= PSearchRec(@P);
+          P:= PDOSSearchRec(@P);
           P:=List^.At(I);
           If P^.Attr And Directory <> 0 Then
             If UpperCase(P^.Name) = CurDirName Then
@@ -281,7 +329,7 @@ begin
   FSplit(Upper(What),D1,N1,E1);
   FSplit(Upper(Mask),D2,N2,E2);
 {$endif}
-  MatchesMask:=CmpStr(N2,N1) and CmpStr(E2,E1);
+  MatchesMask:=CmpStr(N2,N1) and (((E2 = '.*') And (E1 = '')) Or (CmpStr(E2,E1)));
 end;
 
 function MatchesMaskList(What, MaskList: string): boolean;
@@ -303,7 +351,7 @@ procedure TDOSShortWindow.ViewFile;
 Var
   FileName:String;
   H: PFileWindow;
-  P:PSearchRec;
+  P:PDOSSearchRec;
 begin
   mFileList^.GetData(P);
 
@@ -330,12 +378,12 @@ const
   FindAttr = ReadOnly + Archive;
   PrevDir  = '..';
 var
-  S: SearchRec;
-  P: StdDlg.PSearchRec;
+  S: DOS.SearchRec;
+  P: PDOSSearchRec;
   FileList: PFileCollection;
   NumFiles: Word;
   FindStr,
-  WildName : string;
+  WildName : ShortString;
   Dir: DirStr;
   Ext: ExtStr;
   Name: NameStr;
@@ -357,7 +405,7 @@ begin
      FindStr:=AWildCard;
    end; { for debug MessageBox(FindStr,nil,0); }
   FindFirst(FindStr, FindAttr, S);
-  P := StdDlg.PSearchRec(@P);
+  P := PDOSSearchRec(@P);
   while assigned(P) and (DosError = 0) do
    begin
      if (S.Attr and Directory = 0) and
@@ -371,6 +419,7 @@ begin
          P^.Time:=S.Time;
          P^.Size:=S.Size;
          P^.Name:=S.Name;
+         P^.Selected:=False;
          FileList^.Insert(P);
 {       end;}
      end;
@@ -394,6 +443,7 @@ begin
         P^.Time:=S.Time;
         P^.Size:=S.Size;
         P^.Name:=S.Name;
+        P^.Selected:=False;
         FileList^.Insert(P);
 {      end;}
     end;
@@ -419,6 +469,7 @@ begin
          P^.Time:=S.Time;
          P^.Size:=S.Size;
          P^.Name:=S.Name;
+         P^.Selected:=False;
        end
       else
        begin
@@ -426,8 +477,9 @@ begin
          P^.Size := 0;
          P^.Time := $210000;
          P^.Attr := Directory;
+         P^.Selected:=False;
        end;
-      FileList^.Insert(PSearchRec(P));
+      FileList^.Insert(PDOSSearchRec(P));
      {$ifdef fpc}
       FindClose(S);
      {$endif}
@@ -443,15 +495,77 @@ begin
     Event.InfoPtr := List^.At(0);
     Owner^.HandleEvent(Event);
   end;
+
 end;
 
 {---------------------------------------------------------}
 procedure TDOSFileList.HandleEvent(Var Event: TEvent);
+Var
+  P:PDOSSearchRec;
+  Item:LongInt;
 begin
+  Case Event.What of
+    evKeyDown:
+    Begin
+      Case Event.Keycode Of
+        kbIns:SelectItem(Focused);
+        kbGrayAst:
+        Begin
+          If List^.Count > 0 Then
+          Begin
+            P := PDOSSearchRec(@P);
+            For Item:=0 to List^.Count - 1 do
+            Begin
+              P := List^.At(Item);
+              If P^.Attr And faDirectory <> faDirectory Then
+                P^.Selected:=not P^.Selected;
+            End;
+            Draw;
+          End
+        End;
+        kbGrayMinus:
+        Begin
+          If List^.Count > 0 Then
+          Begin
+            P := PDOSSearchRec(@P);
+            For Item:=0 to List^.Count - 1 do
+            Begin
+              P := List^.At(Item);
+              If P^.Attr And faDirectory <> faDirectory Then
+                P^.Selected:=False;
+            End;
+            Draw;
+          End
+        End;
+      End;
+    End;
+  evBroadCast:
+    Case Event.Command of
+      cmListItemSelected:
+        Begin
+          If List^.Count > 0 Then
+          Begin
+            P := PDOSSearchRec(@P);
+            P := List^.At(Focused);
+            If P^.Attr And faDirectory <> faDirectory Then
+            Begin
+              P^.Selected:=not P^.Selected;
+              If List^.Count - 1 > Focused Then
+                Inc(Focused);
+              Draw;
+            End;
+          End;
+        End;
+    End;
+  End;
   inherited HandleEvent(Event);
 end;
 {---------------------------------------------------------}
-
+function TDOSFileList.IsSelected(Item: Sw_Integer):Boolean;
+Begin
+  IsSelected:=PDOSSearchRec(List^.At(Item))^.Selected;
+End;
+{---------------------------------------------------------}
 PROCEDURE TDOSLongFileList.Draw;
 VAR  I, J, ColWidth, Item, Indent, CurCol: Sw_Integer;
      Color: Word; SCOff: Byte;
@@ -467,6 +581,7 @@ BEGIN
        If (State AND (sfSelected + sfActive) =
        (sfSelected + sfActive)) AND (Focused = Item)  { Focused item }
        AND (Range > 0) Then Begin
+       If IsSelected(Item) Then Color:=(GetColor(4) and $0F) + (GetColor(3) and $F0)  Else
          Color := GetColor(3);                        { Focused colour }
          SetCursor(CurCol+1,I);                       { Set the cursor }
          SCOff := 0;                                  { Zero colour offset }
@@ -507,9 +622,9 @@ Begin
   Desktop^.GetExtent(R);
   R.A.X:=R.B.X div 2;
   R.B.Y:=R.B.Y - 1;
-  TDialog.Init(R, Dir);
-{  Palette:=wpBlueWindow;}
   FSplit(Dir, CurDir, name, ext);
+  TDialog.Init(R, TruncPathStr(CurDir, R.B.X - R.A.X - 4));
+{  Palette:=wpBlueWindow;}
   CurMask:=Mask;
   R.Assign(1, 1, Size.X - 1, Size.Y - 1);
   mFileList:=New(PDOSLongFileList, Init(R, Nil));
@@ -534,11 +649,17 @@ Begin
       Case Event.Keycode Of
         kbEnter: ChangeDir;
         kbF5: CopyFile;
+        kbCtrlR:
+        Begin
+          mFileList^.ReadDirectory(CurDir + CurMask);
+          ClearEvent(Event);
+        End;
       end;
     end;
-    evMouseDown: if Event.Double Then
+    evMouseDown: if Event.Double And (Event.Buttons = mbLeftButton) Then
     begin
       ChangeDir;
+      ClearEvent(Event);
     end;
     evCommand:
       Case Event.Command Of
@@ -574,22 +695,54 @@ End;
 procedure TDOSShortWindow.CopyFile;
 Var
   FileName:String;
-  P:PSearchRec;
+  lCurDir:String;
+  P:PDOSSearchRec;
+  ExistSelected:Boolean;
+  Item:LongInt;
 begin
-  mFileList^.GetData(P);
 
-  FileName:= CurDir;
+  ExistSelected:=False;
+  For Item:=0 to mFileList^.List^.Count - 1 do
+    ExistSelected := ExistSelected Or mFileList^.IsSelected(Item);
 
-  While FileName[Length(FileName)] = '\' do
-    FileName:=LeftStr(FileName, Length(FileName) - 1);
-  FileName:=FileName + '\' + P^.Name;
+  lCurDir:=CurDir;
+  While lCurDir[Length(lCurDir)] = '\' do
+    lCurDir:=LeftStr(lCurDir, Length(lCurDir) - 1);
 
-  If P^.Attr and Directory = 0 Then
-    If FileExists(FileName) Then
-    begin
-//      Message(Application, evCommand, cmCopyFileDOS, @FileName);
-      Message(Application, evBroadCast, cmCopyFileDOS, @FileName);
-    end;
+  If ExistSelected Then
+  Begin
+    For Item:=0 to mFileList^.List^.Count - 1 do
+    Begin
+      P := PDOSSearchRec(mFileList^.List^.At(Item));
+      If P^.Selected Then
+      Begin
+        FileName:=lCurDir + '\' + P^.Name;
+
+        If P^.Attr and Directory = 0 Then
+          If FileExists(FileName) Then
+          begin
+      //      Message(Application, evCommand, cmCopyFileDOS, @FileName);
+            Message(Application, evBroadCast, cmCopyFileDOS, @FileName);
+          end;
+        P^.Selected:=False;
+      End;
+    End;
+    Draw;
+  End
+  Else
+  Begin
+    mFileList^.GetData(P);
+
+    FileName:=lCurDir + '\' + P^.Name;
+
+    If P^.Attr and Directory = 0 Then
+      If FileExists(FileName) Then
+      begin
+  //      Message(Application, evCommand, cmCopyFileDOS, @FileName);
+        Message(Application, evBroadCast, cmCopyFileDOS, @FileName);
+      end;
+  End;
+
 end;
 {---------------------------------------------------------}
 procedure TDOSShortWindow.AddFile(FileNames:TFileNames);
@@ -639,14 +792,17 @@ Begin
   Desktop^.GetExtent(R);
   R.A.X:=R.B.X div 2;
   R.B.Y:=R.B.Y - 1;
-  TDialog.Init(R, ExtractFileDrive(Dir) + '\');
+
 {  Palette:=wpBlueWindow;}
 
   While Dir[Length(Dir)] = '\' do
     Dir:=LeftStr(Dir, Length(Dir) - 1);
+
+  TDialog.Init(R, TruncPathStr(Dir, R.B.X - R.A.X - 16));
   Dir:=Dir + '\';
 
   FSplit(Dir, CurDir, name, ext);
+
   CurMask:=Mask;
   R.Assign(1, 1, Size.X - 1, Size.Y - 1);
   mFileList:=New(PDOSLongFileList, Init(R, Nil));
