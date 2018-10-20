@@ -83,7 +83,8 @@
  { Calculate the number of colored blocks for the current 'Value' }
  function TGrowView.CalcBlock : Integer ;
   begin
-   CalcBlock := Round( Size.X / Total * Value ) ;
+{   CalcBlock := Round( Size.X / Total * Value ) ; }
+   CalcBlock := Round( (Value * Size.X) div Total ) ;
   end ;
 
  procedure TGrowView.Draw ;

@@ -1,4 +1,8 @@
+{$ifdef fpc}
 {$mode objfpc}
+{$else}
+{$N+}
+{$endif}
 Unit Part3Msx;
 
 Interface
@@ -11,7 +15,11 @@ Type
     Fl: PStream;
     Constructor Init(AStream: PStream; AFileName: String);
     Procedure WriteBASFile(NewFileName:String);
+  {$ifdef fpc}
   protected
+  {$else}
+  private
+  {$endif}
     Function Byte2Hex(B:Byte):String;virtual;
     Function Word2OCT(W:Word):String;virtual;
     Function ReadLine:String;virtual;
@@ -19,7 +27,7 @@ Type
 
 Implementation
 
-Uses Msbin, SysUtils, FViewer;
+Uses Msbin, {$ifdef fpc} SysUtils, FViewer {$else} Service {$endif} ;
 
 Constructor TBasFile.Init(AStream: PStream; AFileName: String);
 Begin
@@ -28,8 +36,13 @@ Begin
     Exit;
   {$I-}
   if Fl = nil then
+  Begin
+  {$Ifdef fpc}
     Fl := New(PHandleDosStream, Init(AFileName, stOpenRead, fmOpenRead or fmShareCompat))
-//    Fl:=New(PDosStream, Init(AFileName, stOpenRead))
+  {$else}
+    Fl:=New(PDosStream, Init(AFileName, stOpenRead))
+  {$endif}
+  End
   else if Fl^.Status = stOK then
 
   {$I+}
@@ -40,25 +53,40 @@ Var
    BASStream:PDOSStream;
 Var
   Nor:Word;
+{$Ifdef fpc}
   S:ShortString;
+{$else}
+  S:String;
+{$endif}
   LineNumber:Word;
   Size:LongInt;
 Begin
   Nor:=0;
   Size:=Fl^.GetSize;
   Fl^.Seek(0);
+  {$ifdef fpc}
   BASStream:= New(PHandleDosStream, init(NewFileName, stCreate, fmOpenWrite or fmShareDenyWrite));
+  {$else}
+  BASStream:=New(PDosStream, Init(NewFileName, stCreate));
+  {$endif}
+
   FL^.Read(Nor, 1);
   If Nor <> $FF Then
+  Begin
+    {$ifdef fpc}
     Fl^.Seek(Fl^.Position - 1);
+    {$else}
+    Fl^.Seek(Fl^.GetPos - 1);
+    {$endif}
+  End;
   Repeat
     Fl^.Read(Nor,2);
     If Nor=$0000 Then Break;
-    FL^.Read(LineNumber, 2);
+    Fl^.Read(LineNumber, 2);
     S:=IntToStr(LineNumber);
     S:=S + ' ' + ReadLine + #13#10;
     BASStream^.Write(S[1], Length(S));
-  Until fl^.Position >= Size;
+  Until {$ifdef fpc}Fl^.Position >= Size;{$else}Fl^.GetPos >= Size; {$endif}
   BASStream^.Done;
 End;
 
@@ -91,7 +119,11 @@ Var
   I,J:Byte;
   Inquote:Boolean;
   tmpWord:Word;
+  {$ifdef fpc}
   tmpInteger:SmallInt;
+  {$else}
+  tmpInteger:Integer;
+  {$endif}
   tmpByte1,tmpByte2:Byte;
 
   tmpSngl:Single;
@@ -197,6 +229,7 @@ Begin
       $1D:Begin                    { Встретилось число с плав.точкой   }
         Fl^.Read(tmpSngl,SizeOf(tmpSngl));
         tmpSngl:=_Fmsbintoieee(tmpSngl);
+        {$ifdef fpc}
         try
           If Frac(tmpSngl)=0.0 Then
             S:=S+FloatToStrF(tmpSngl,ffGeneral,0,0)+'!'
@@ -204,11 +237,21 @@ Begin
             S:=S+FloatToStrF(tmpSngl,ffGeneral,0,7);
         except
         end;
+        {$else}
+        If Frac(tmpSngl)=0.0 Then
+          S:=S+RealToStr(tmpSngl,0,0)+'!'
+        Else
+          S:=S+RealToStr(tmpSngl,0,7);
+        {$endif}
       End;
       $1F:Begin
         Fl^.Read(tmpDbl,SizeOf(tmpDbl));
         tmpDbl:=_Dmsbintoieee(tmpDbl);
+        {$ifdef fpc}
         S:=S+FloatToStrF(tmpDbl,ffGeneral,0,16);
+        {$else}
+        S:=S+RealToStr(tmpDbl,0,16);
+        {$endif}
       End;
 
       Byte('"'):Begin                   { Встретилась открывающаяся кавычка }
@@ -241,7 +284,7 @@ Begin
       $94: S:=S+('NEW');              { Добавлено 18.03.09 }
       $95: S:=S+('ON');               { Добавлено 22.11.08 }
       $96: S:=S+('$');
- //     $97: S:=S+('COM');
+ {     $97: S:=S+('COM'); }
       $98: S:=S+('DEF');
       $99: S:=S+('POKE');             { Добавлено 22.11.08 }
       $9A: S:=S+('CONT');             { Добавлено 19.03.09 }
@@ -267,7 +310,7 @@ Begin
 
       $B0: S:=S+('DEFDBL');
       $B1: S:=S+('LINE');
- //     $B2: S:=S+('SPEED');
+{/     $B2: S:=S+('SPEED'); }
       $Bb: S:=S+('RANDOMIZE');        { Добавлено 18.03.09 }
       $Bc: S:=S+('BEEP');             { Добавлено 22.11.08 }
       $Bd: S:=S+('SYSTEM');           { Добавлено 19.03.09 }
@@ -377,4 +420,7 @@ Begin
 End;
 
 Begin
+{$ifdef fpc}
+  DefaultFormatSettings.DecimalSeparator:='.';
+{$endif}
 End.

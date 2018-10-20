@@ -8,11 +8,13 @@
 {************************************************}
 
 Unit DosDlg;
+
 Interface
-Uses {$Ifdef fpc} SysUtils, {$Endif} Stddlg, Objects, Views, Drivers, Dialogs, Dos;
+Uses {$Ifdef fpc} SysUtils, {$Endif} Stddlg, Objects, Views, Drivers, Dialogs, Dos, MSTConst;
 {---------------------------------------------------------}
 
 {$Ifndef fpc}
+{$V-}
 Type
   ShortString = String;
   Sw_Integer  = Integer;
@@ -32,6 +34,7 @@ Type
     procedure ReadDirectory(AWildCard: PathStr);virtual;
     Function GetText(Item, MaxLen: Sw_Integer): String;virtual;
     function IsSelected(Item: Sw_Integer):Boolean;virtual;
+    procedure Sort(SortMode:TSortMode);
   end;
 
 Type
@@ -55,6 +58,7 @@ Type
     Procedure ViewFileEx; virtual;
     Procedure CopyFile; virtual;
     Procedure AddFile(FileNames:TFileNames); virtual;
+    Procedure DeleteDOSFile;virtual;
     Function GetPalette: PPalette; virtual;
   End;
   {---------------------------------------------------------}
@@ -67,6 +71,7 @@ Type
 Type
   PDOSFileCollection = ^TDOSFileCollection;
   TDOSFileCollection = object(TFileCollection)
+    SortMode:TSortMode;
     {$ifdef fpc}
     function Compare(Key1, Key2: Pointer): LongInt; virtual;
     {$else}
@@ -76,7 +81,7 @@ Type
   {---------------------------------------------------------}
 Implementation
 
-Uses App, MsgBox, {$Ifdef fpc} FVConsts, FViewer, {$else} Service, {$Endif} MSTConst, part3msx;
+Uses App, MsgBox, {$Ifdef fpc} FVConsts, FViewer, {$else} Service, {$Endif} part3msx, GrowView, AppWin, AppWinEx;
 
 {$Ifndef fpc}
 Const
@@ -128,7 +133,13 @@ Begin
   Else
     TruncPathStr:=Str;
 End;
-
+{---------------------------------------------------------}
+procedure TDOSFileList.Sort(SortMode:TSortMode);
+Begin
+  PDOSFileCollection(List)^.SortMode:=SortMode;
+  ReadDirectory(PDOSShortWindow(Owner)^.CurDir + PDOSShortWindow(Owner)^.CurMask);
+End;
+{---------------------------------------------------------}
 function TDOSFileList.GetText(Item,MaxLen: Sw_Integer): String;
 var
   S: String;
@@ -202,10 +213,24 @@ begin
       If Name1>Name2 Then Compare:=1 Else Compare:=-1
     Else
     Begin
-      If Ext1>Ext2 Then Compare:=1;
-      If Ext2>Ext1 Then Compare:=-1;
-      If Ext2=Ext1 Then
-        If Name1>Name2 Then Compare:=1 Else Compare:=-1
+      case SortMode of
+      psmExt:
+        Begin
+          If Ext1>Ext2 Then Compare:=1;
+          If Ext2>Ext1 Then Compare:=-1;
+          If Ext2=Ext1 Then
+            If Name1>Name2 Then Compare:=1 Else Compare:=-1
+        End;
+      psmName:
+        Begin
+          If Name1>Name2 Then Compare:=1;
+          If Name2>Name1 Then Compare:=-1;
+          If Name2=Name1 Then
+            If Ext1>Ext2 Then Compare:=1 Else Compare:=-1
+        End;
+      else
+        Compare:=0;
+      End;
     End;
   End
 end;
@@ -270,10 +295,16 @@ End;
 procedure TDOSShortWindow.ChangeDir;
 Var
   P:PDOSSearchRec;
-  CurDirName:NameStr;
+  CurDirName:{$ifdef fpc}NameStr;{$else}PathStr;{$endif}
+  CurDirExt:ExtStr;
   I:LongInt;
   isRootDir:Boolean;
   NewTitle:ShortString;
+  CurFileName:PathStr;
+Var
+  Dir : DirStr;
+  Name: NameStr;
+  Ext : ExtStr;
 begin
   P:= PDOSSearchRec(@P);
   mFileList^.GetData(P);
@@ -285,26 +316,33 @@ begin
       isRootDir:=True;
       CurDirName:=CurDir;
       While CurDirName[Length(CurDirName)] = '\' do
-        {$Ifdef fpc}
         CurDirName:=LeftStr(CurDirName, Length(CurDirName) - 1);
-        {$Else}
-        CurDirName:=Copy(CurDirName, 1, Length(CurDirName) - 1);
-        {$EndIf}
+      CurDirExt:=ExtractFileExt(CurDirName);
       CurDirName:=ExtractFileName(CurDirName);
+      If CurDirExt <> ''Then
+        CurDirName:=CurDirName+CurDirExt;
       CurDirName:=UpperCase(CurDirName);
     end;
 
     CurDir:=ExpandFileName(CurDir + p^.name);
 
     While CurDir[Length(Curdir)] = '\' do
+      {$ifdef fpc}
       CurDir:=LeftStr(CurDir, Length(CurDir) - 1);
+      {$else}
+      CurDir:=Copy(CurDir, 1, Length(CurDir) - 1);
+      {$endif}
 
     CurDir:=CurDir + '\';
 
     If Length(CurDir) = 3 Then
       NewTitle:=TruncPathStr(CurDir, Size.X - 16)
     Else
+      {$ifdef fpc}
       NewTitle:=TruncPathStr(LeftStr(CurDir, Length(CurDir) - 1), Size.X - 16);
+      {$else}
+      NewTitle:=TruncPathStr(Copy(CurDir, 1, Length(CurDir) - 1), Size.X - 16);
+      {$endif}
 
     DisposeStr(Title);
     Title :=NewStr(NewTitle);
@@ -329,6 +367,19 @@ begin
             End;
         End;
       End;
+  end
+  else
+  Begin
+    {$Ifdef fpc}
+    FSplit(UpperCase(P^.Name),Dir,Name,Ext);
+    {$Else}
+    FSplit(strupr(P^.Name),Dir,Name,Ext);
+    {$Endif}
+    If Ext = '.KDI' Then
+    Begin
+      CurFileName:=CurDir + p^.name;
+      Message(Application, evBroadCast, cmMountKDI, @CurFileName);
+    End;
   end;
 end;
 
@@ -431,17 +482,24 @@ begin
 end;
 
 procedure TDOSShortWindow.ViewFile;
+{$ifdef fpc}
 Var
   FileName:String;
   H: PFileWindow;
   P:PDOSSearchRec;
+{$endif}
 begin
+{$ifdef fpc}
   mFileList^.GetData(P);
 
   FileName:= CurDir;
 
   While FileName[Length(FileName)] = '\' do
+    {$ifdef fpc}
     FileName:=LeftStr(FileName, Length(FileName) - 1);
+    {$else}
+    FileName:=Copy(FileName, 1, Length(FileName) - 1);
+    {$endif}
   FileName:=FileName + '\' + P^.Name;
 
   If P^.Attr and Directory = 0 Then
@@ -454,22 +512,30 @@ begin
       {$endif}
       Application^.InsertWindow(H);
     end;
+{$endif}
 end;
 
 procedure TDOSShortWindow.ViewFileEx;
+{$ifdef fpc}
 Var
   FileName:String;
   H: PFileWindow;
   P:PDOSSearchRec;
   BASFile:PBASFile;
   BASFileName:String;
+{$endif}
 begin
+{$ifdef fpc}
   mFileList^.GetData(P);
 
   FileName:= CurDir;
 
   While FileName[Length(FileName)] = '\' do
+    {$ifdef fpc}
     FileName:=LeftStr(FileName, Length(FileName) - 1);
+    {$else}
+    FileName:=Copy(FileName, 1, Length(FileName) - 1);
+    {$endif}
   FileName:=FileName + '\' + P^.Name;
 
   If P^.Attr and Directory = 0 Then
@@ -491,6 +557,7 @@ begin
       Application^.InsertWindow(H);
       {$endif}
     end;
+{$endif}
 end;
 
 procedure TDOSFileList.ReadDirectory(AWildCard: PathStr);
@@ -508,8 +575,23 @@ var
   Name: NameStr;
   Event : TEvent;
   Tmp: PathStr;
+  SortMode:TSortMode;
+{$Ifndef fpc}
+Const
+  AllFiles = '*.*';
+{$endif}
 begin
+  SortMode:=psmExt;
+  If Assigned(List) Then
+  Begin
+    SortMode:=PDOSFileCollection(List)^.SortMode;
+  End;
+  If not (SortMode in [psmExt, psmName]) Then
+    SortMode:=psmExt;
+
   FileList := New(PDOSFileCollection, Init(5, 5));
+  PDOSFileCollection(FileList)^.SortMode:=SortMode;
+
   AWildCard := FExpand(AWildCard);
   FSplit(AWildCard, Dir, Name, Ext);
   if pos(ListSeparator,AWildCard)>0 then
@@ -635,7 +717,11 @@ begin
             For Item:=0 to List^.Count - 1 do
             Begin
               P := List^.At(Item);
+              {$ifdef fpc}
               If P^.Attr And faDirectory <> faDirectory Then
+              {$else}
+              If P^.Attr And Directory <> Directory Then
+              {$endif}
                 P^.Selected:=not P^.Selected;
             End;
             Draw;
@@ -649,11 +735,23 @@ begin
             For Item:=0 to List^.Count - 1 do
             Begin
               P := List^.At(Item);
+              {$ifdef fpc}
               If P^.Attr And faDirectory <> faDirectory Then
+              {$else}
+              If P^.Attr And Directory <> Directory Then
+              {$endif}
                 P^.Selected:=False;
             End;
             Draw;
           End
+        End;
+        kbCtrlF4:
+        Begin
+          Sort(psmExt);
+        End;
+        kbCtrlF3:
+        Begin
+          Sort(psmName);;
         End;
       End;
     End;
@@ -665,7 +763,11 @@ begin
           Begin
             P := PDOSSearchRec(@P);
             P := List^.At(Focused);
+            {$ifdef fpc}
             If P^.Attr And faDirectory <> faDirectory Then
+            {$else}
+            If P^.Attr And Directory <> Directory Then
+            {$endif}
             Begin
               P^.Selected:=not P^.Selected;
               If List^.Count - 1 > Focused Then
@@ -796,7 +898,7 @@ Begin
 {  Palette:=wpBlueWindow;}
   CurMask:=Mask;
   R.Assign(1, 1, Size.X - 1, Size.Y - 1);
-//  R.Assign(1, 1, Size.X - 1, Size.Y - 3);
+{  R.Assign(1, 1, Size.X - 1, Size.Y - 3); }
   mFileList:=New(PDOSLongFileList, Init(R, Nil));
   mFileList^.SetState(sfCursorVis, False);
   Insert(mFileList);
@@ -819,11 +921,13 @@ Begin
       Case Event.Keycode Of
         kbEnter: ChangeDir;
         kbF5: CopyFile;
+        {$ifdef fpc}
         kbCtrlR:
         Begin
           mFileList^.ReadDirectory(CurDir + CurMask);
           ClearEvent(Event);
         End;
+        {$endif}
         kbShiftF3:
         Begin
           ViewFileEx;
@@ -838,6 +942,11 @@ Begin
     end;
     evCommand:
       Case Event.Command Of
+        cmDeleteFile:
+        begin
+          DeleteDOSFile;
+          ClearEvent(Event);
+        End;
         cmOpen:
         Begin
           ViewFile;
@@ -853,7 +962,7 @@ Begin
           AddFile(FileNames^);
           ClearEvent(Event);
         End;*)
-    end;
+      end;
     evBroadCast:
       Case Event.Command Of
         cmCopyFileMST:
@@ -873,19 +982,39 @@ Var
   lCurDir:String;
   P:PDOSSearchRec;
   ExistSelected:Boolean;
+  SelectedCount:Word;
   Item:LongInt;
+  D:PProgressDialog;
+  Counter:Word;
+  R:TRect;
+Const
+  GV1 : PGrowView = nil;
 begin
 
   ExistSelected:=False;
+  SelectedCount:=0;
   For Item:=0 to mFileList^.List^.Count - 1 do
+  Begin
+    If mFileList^.IsSelected(Item) Then
+      Inc(SelectedCount);
     ExistSelected := ExistSelected Or mFileList^.IsSelected(Item);
+  End;
 
   lCurDir:=CurDir;
   While lCurDir[Length(lCurDir)] = '\' do
+    {$ifdef fpc}
     lCurDir:=LeftStr(lCurDir, Length(lCurDir) - 1);
+    {$else}
+    lCurDir:=Copy(lCurDir, 1, Length(lCurDir) - 1);
+    {$endif}
 
   If ExistSelected Then
   Begin
+    R.Assign( 2, 4, 42, 5 );
+    GV1 := New( PGrowView, Init(R, SelectedCount));
+    D:=New(PDiskProgressDialog, Init(GV1, ''));
+    Desktop^.Insert(D);
+    Counter:=0;
     For Item:=0 to mFileList^.List^.Count - 1 do
     Begin
       P := PDOSSearchRec(mFileList^.List^.At(Item));
@@ -896,13 +1025,17 @@ begin
         If P^.Attr and Directory = 0 Then
           If FileExists(FileName) Then
           begin
-      //      Message(Application, evCommand, cmCopyFileDOS, @FileName);
+            D^.SetCurrentText('Copy file ' + P^.Name);
+            Inc(Counter);
+            GV1^.Update(Counter);
+            { Message(Application, evCommand, cmCopyFileDOS, @FileName); }
             Message(Application, evBroadCast, cmCopyFileDOS, @FileName);
           end;
         P^.Selected:=False;
+        Draw;
       End;
     End;
-    Draw;
+    Dispose(D, Done);
   End
   Else
   Begin
@@ -913,7 +1046,7 @@ begin
     If P^.Attr and Directory = 0 Then
       If FileExists(FileName) Then
       begin
-  //      Message(Application, evCommand, cmCopyFileDOS, @FileName);
+        { Message(Application, evCommand, cmCopyFileDOS, @FileName); }
         Message(Application, evBroadCast, cmCopyFileDOS, @FileName);
       end;
   End;
@@ -929,31 +1062,144 @@ begin
   FileName:= CurDir;
 
   While FileName[Length(FileName)] = '\' do
+    {$Ifdef fpc}
     FileName:=LeftStr(FileName, Length(FileName) - 1);
+    {$else}
+    FileName:=Copy(FileName, 1, Length(FileName) - 1);
+    {$endif}
   FileName:=FileName + '\' + FileNames[0];
 
   If FileExists(FileName) Then
   begin
+    {$ifdef fpc}
     If (FileGetAttr(FileName) and faDirectory) <> 0 Then
+    {$else}
+    If (FileGetAttr(FileName) and Directory) <> 0 Then
+    {$endif}
     begin
       MessageBox('Directory ' + FileNames[0] + ' exist, can''t erase!', nil, mfError or mfOKButton);
       Exit;
     end
     else
     begin
+      {$ifdef fpc} { TODO BP }
       if StdDlg.ReplaceFile(FileName) Then
+      {$else}
+      If True Then
+      {$endif}
+      Begin
+        {$ifdef fpc}
         If Not SysUtils.DeleteFile(FileName) Then
+        {$else}
+        If Not DeleteFile(FileName) Then
+        {$endif}
         Begin
           MessageBox('Can''t erase file'#13 + FileNames[0], nil, mfError or mfOKButton);
           Exit;
         End;
+      End
+        Else Exit;
     end;
   End;
   If (not RenameFile(FileNames[1], FileName)) Then
     MessageBox('Can''t rename file'#13 + FileNames[1] + #13'to'#13 + FileName, nil, mfError or mfOKButton)
   else
     mFileList^.ReadDirectory(CurDir + CurMask);
-//  Dispose(FileNames, Done);
+{  Dispose(FileNames, Done); }
+end;
+{---------------------------------------------------------}
+Procedure TDOSShortWindow.DeleteDOSFile;
+Var
+  FileName:String;
+  lCurDir:String;
+  P:PDOSSearchRec;
+  ExistSelected:Boolean;
+  SelectedCount:Word;
+  Item:LongInt;
+  D:PProgressDialog;
+  Counter:Word;
+  R:TRect;
+Const
+  GV1 : PGrowView = nil;
+
+Begin
+  ExistSelected:=False;
+  SelectedCount:=0;
+  For Item:=0 to mFileList^.List^.Count - 1 do
+  Begin
+    If mFileList^.IsSelected(Item) Then
+      Inc(SelectedCount);
+    ExistSelected := ExistSelected Or mFileList^.IsSelected(Item);
+  End;
+
+  lCurDir:=CurDir;
+  While lCurDir[Length(lCurDir)] = '\' do
+    {$ifdef fpc}
+    lCurDir:=LeftStr(lCurDir, Length(lCurDir) - 1);
+    {$else}
+    lCurDir:=Copy(lCurDir, 1, Length(lCurDir) - 1);
+    {$endif}
+
+  If ExistSelected Then
+  Begin
+    R.Assign( 2, 4, 42, 5 );
+    GV1 := New( PGrowView, Init(R, SelectedCount));
+    D:=New(PDiskProgressDialog, Init(GV1, ''));
+    Desktop^.Insert(D);
+    Counter:=0;
+    For Item:=0 to mFileList^.List^.Count - 1 do
+    Begin
+      P := PDOSSearchRec(mFileList^.List^.At(Item));
+      If P^.Selected Then
+      Begin
+        FileName:=lCurDir + '\' + P^.Name;
+
+        If P^.Attr and Directory = 0 Then
+          If FileExists(FileName) Then
+          begin
+            D^.SetCurrentText('Delete file ' + P^.Name);
+            Inc(Counter);
+            GV1^.Update(Counter);
+            {$ifdef fpc} { TODO BP }
+            If not SysUtils.DeleteFile(FileName) Then
+            {$else}
+            If Not DeleteFile(FileName) Then
+            {$endif}
+            Begin
+              MessageBox('Can''t erase file'#13 + FileName, nil, mfError or mfOKButton);
+              Dispose(D, Done);
+              mFileList^.ReadDirectory(CurDir + CurMask);
+              Exit;
+            End;
+          end;
+        P^.Selected:=False;
+        Draw;
+      End;
+    End;
+    Dispose(D, Done);
+    mFileList^.ReadDirectory(CurDir + CurMask);
+  End
+  Else
+  Begin
+    mFileList^.GetData(P);
+
+    FileName:=lCurDir + '\' + P^.Name;
+
+    If P^.Attr and Directory = 0 Then
+      If FileExists(FileName) Then
+      begin
+        {$ifdef fpc} { TODO BP }
+        If not SysUtils.DeleteFile(FileName) Then
+        {$else}
+        If not DeleteFile(FileName) Then
+        {$endif}
+        Begin
+          MessageBox('Can''t erase file'#13 + FileName, nil, mfError or mfOKButton);
+          Exit;
+        End;
+        mFileList^.ReadDirectory(CurDir + CurMask);
+      end;
+  End;
 end;
 {---------------------------------------------------------}
 Constructor TDOSLongWindow.Init(Dir, Mask:String);
@@ -967,7 +1213,11 @@ Begin
   R.B.Y:=R.B.Y - 1;
 
   While Dir[Length(Dir)] = '\' do
+    {$Ifdef fpc}
     Dir:=LeftStr(Dir, Length(Dir) - 1);
+    {$else}
+    Dir:=Copy(Dir, 1, Length(Dir) - 1);
+    {$endif}
 
   TDialog.Init(R, TruncPathStr(Dir, R.B.X - R.A.X - 16));
 
@@ -979,12 +1229,16 @@ Begin
 
   CurMask:=Mask;
   R.Assign(1, 1, Size.X - 1, Size.Y - 1);
-//  R.Assign(1, 1, Size.X - 1, Size.Y - 3);
+{  R.Assign(1, 1, Size.X - 1, Size.Y - 3); }
   mFileList:=New(PDOSLongFileList, Init(R, Nil));
   mFileList^.SetState(sfCursorVis, False);
   Insert(mFileList);
   While CurDir[Length(CurDir)] = '\' do
+    {$ifdef fpc}
     CurDir:=LeftStr(CurDir, Length(CurDir) - 1);
+    {$else}
+    CurDir:=Copy(CurDir, 1, Length(CurDir) - 1);
+    {$endif}
   CurDir:=CurDir + '\';
   mFileList^.ReadDirectory(CurDir + CurMask);
 End;

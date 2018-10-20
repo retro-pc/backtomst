@@ -20,11 +20,12 @@
 {$endif}
 
 Uses App, Objects, Views, Menus, Drivers, Stddlg,
-  Msgbox, GrowView, AppWin, Mstconst, MSTDisk, AppWinEx, MstDlg, DosDlg, FV_Const, SysUtils
+  Msgbox, GrowView, AppWin, Mstconst, MSTDisk, AppWinEx, MstDlg, DosDlg, FV_Const {$ifdef debug}, GadGets {$endif}
 {$ifdef fpc}
 {$ifndef win32}
 , Go32
 {$endif}
+, SysUtils
 {$else}
 , Service
 {$endif}
@@ -63,10 +64,16 @@ Type
     DiskName:String;
     {$endif}
   { 0=500Kbps (HD), 1=300Kbps (DD 5.25"), 2=250Kbps (DD 3.5"), 3=1Mbps (ED) }
+    {$Ifdef fpc}
     FDRate:(FD_RATE_500K=0,FD_RATE_300K=1,FD_RATE_250K=2,FD_RATE_1M=3);
-    Dbt:Array[0..9] Of Byte;
+    {$else}
+    FDRate:(FD_RATE_500K,FD_RATE_300K,FD_RATE_250K,FD_RATE_1M);
+    {$endif}
     LeftWindow:PMSTShortWindow;
     RightWindow:PDOSShortWindow;
+    {$ifdef debug}
+    Heap: PHeapView;
+    {$endif}
     Constructor Init;
     Destructor Done;Virtual;
     Procedure HandleEvent(Var Event:TEvent);Virtual;
@@ -88,7 +95,7 @@ Begin
   + ' (' + linkdate + ')'
   {$endif}
     + #13 +
-    #3'Copyright (C) 2013-2014'#13#3'Маринов Георгий aka MarinovSoft'
+    #3'Copyright (C) 2013-2018'#13#3'Маринов Георгий aka MarinovSoft'
   , Nil, mfInformation Or mfOKButton);
 End;
 
@@ -119,8 +126,8 @@ Begin
     Nil))),
     NewItem('File ~i~mage', '', kbNoKey, cmSelectDriveImage, hcNoContext,
     Nil)))),
-//    NewItem('Floppy setup', '', kbNoKey, cmOptions, hcNoContext,
-//    Nil))),
+{    NewItem('Floppy setup', '', kbNoKey, cmOptions, hcNoContext, }
+{    Nil))), }
     Nil)),
     NewSubMenu('~W~indow', hcNoContext, NewMenu(
     StdWindowMenuItems(Nil)),
@@ -134,18 +141,27 @@ Procedure TMSTApplication.InitStatusLine;
 Var R:TRect;
 Begin
   GetExtent(R);
-  R.A.Y:=R.B.Y-1;
+  R.A.Y := R.B.Y - 1;
+  {$ifdef debug}
+  R.B.X := R.B.X - 12;
+  {$endif}
   New(StatusLine,Init(R,
     NewStatusDef(0,$2B00,
     NewStatusKey('~Alt-X~ Exit',kbAltX,cmQuit,
     NewStatusKey('~F3~ Open',kbF3,cmOpen,
-    NewStatusKey('~F8~ Delete file', kbF8, cmDelete,
+    NewStatusKey('~F8~ Delete file', kbF8, cmDeleteFile,
     NewStatusKey('~F5~ Copy file', kbNoKey, 0,
     StdStatusKeys(Nil))))),
     NewStatusDef(hcView, hcView,
     NewStatusKey('~F4~ Hex/Asc/Dmp', kbF4, cmHexMode,
     NewStatusKey('~Shift+F2~ Wrap', kbShiftF2, cmUnWrap,
     StdStatusKeys(nil))),  Nil))));
+  {$ifdef debug}
+  GetExtent(R);
+  R.A.X := R.B.X - 12; R.A.Y := R.B.Y - 1;
+  Heap := New(PHeapView, Init(R));
+  Insert(Heap);
+  {$endif}
 End;
 
 Procedure TMSTApplication.HandleEvent(Var Event:TEvent);
@@ -222,6 +238,19 @@ Begin
       End;
     End;
   End;
+  If Event.What = evBroadcast Then
+  Begin
+    Case Event.Command of
+      cmMountKDI:
+      Begin
+        If Message(Application, evBroadCast, cmMSTDiskOpen, nil) <> Nil Then
+          Dispose(LeftWindow, Done);
+        DiskName:=String(Event.InfoPtr^);
+        ListDisk;
+        ClearEvent(Event);
+      End;
+    End;
+  End;
   Inherited HandleEvent(Event);
 End;
 
@@ -241,16 +270,19 @@ Var
 
 Const
   GV1 : PGrowView = nil;
-Procedure VerifyTrack(_Frec:TFormRec);
+  GV2 : PGrowView = nil;
+Function VerifyTrack(_Frec:TFormRec):Boolean;
 Var
   Sect:Byte;
   Buf:TBufType;
   K:Word;
+  _Result:Boolean;
 begin
   Sect:=1;
-  While Sect <= Frec.Scount Do
+  _Result:=True;
+  While Sect <= _Frec.Scount Do
   Begin
-    Frec.Sect:= Sect;
+    _Frec.Sect:= Sect;
     Errc:=MSTDisk^.ReadSect(_Frec, Buf);
     If Errc = 0 Then
 
@@ -258,6 +290,7 @@ begin
     begin
       K:=_Frec.Track;
       If Integer(K) - Integer(SysTrk) < 0 Then
+        _Result:=False
       else
       begin
         K:=((K-Systrk)*5+Sect-1) ShR 1;
@@ -266,6 +299,7 @@ begin
     end;
     inc(Sect);
   End;
+  VerifyTrack:=_Result;
 end;
 
 Begin
@@ -282,11 +316,15 @@ Begin
   { Тут вам не Си! Злобный Паскаль ругается      }
   {
   For Frec.Track:=0 To (Frec.Tcount ShL 1)-1 Do
-}
-  R.Assign( 2, 4, 38, 5 );
-  GV1 := New( PGrowView, Init( R, (Frec.TCount ShL 1)-1 ));
+  }
+  R.Assign( 2, 4, Frec.TCount div 2 + 2, 5 );
+  GV1 := New( PGrowView, Init( R, Frec.TCount div 2));
+
+  R.Assign( 2, 5, Frec.TCount div 2 + 2, 6 );
+  GV2 := New( PGrowView, Init( R, Frec.TCount div 2));
 
   D:=New(PDiskProgressDialog, Init(GV1, ''));
+  D^.Insert(GV2);
   Desktop^.Insert(D);
   D^.SetCurrentText('Format disk');
 
@@ -295,8 +333,11 @@ Begin
   Begin
     Frec.Track:=Track;
     MSTDisk^.SeekTrack(Frec);
+    If (Track) and 1 = 0 Then
+      GV1^.Update(Track div 4 + 1)
+    else
+      GV2^.Update(Track div 4 + 1);
     Errc:=MSTDisk^.FormatTrack(Frec);
-    GV1^.Update(Track);
     If Errc = 0 Then
       Inc(Track)
     Else
@@ -312,6 +353,7 @@ Begin
       If Rslt = cmCancel Then
       Begin
         { Нажали отмена}
+        Dispose(MSTDisk, Done);
         Dispose(D,Done);
         Exit;
         {Break;}
@@ -319,15 +361,40 @@ Begin
       If Rslt = cmNo Then
       Begin
         { Нажали No - пропустим }
-        { Проверить Track}
-        VerifyTrack(Frec);
         Inc(Track);
-        Continue;
       End;
     End;
-    VerifyTrack(Frec);
-    { Проверить Track}
   End;
+
+  D^.SetCurrentText('Verify disk');
+
+  Track:=0; Errc:=0;
+  GV1^.Update(0);
+  GV2^.Update(0);
+  While Track <= (Frec.TCount ShL 1)-1 Do
+  Begin
+    Frec.Track:=Track;
+    MSTDisk^.SeekTrack(Frec);
+    If (Track) and 1 = 0 Then
+      GV1^.Update(Track div 4 + 1)
+    else
+      GV2^.Update(Track div 4 + 1);
+    { Проверить Track}
+    If Not VerifyTrack(Frec) Then
+      If Integer(Frec.Track) - Integer(SysTrk) < 0 Then
+      Begin
+        Rslt:= MessageBox(#3'Error in system track, continue?', Nil, mfError +
+          mfYesButton + mfCancelButton);
+        If Rslt = cmCancel Then
+        Begin
+          Dispose(MSTDisk, Done);
+          Dispose(D,Done);
+          Exit;
+        End;
+      End;
+    Inc(Track);
+  End;
+
   FillChar(Catalog,4096,$E5);
   I:=0;
   For K:=0 to BlockCount do
@@ -417,15 +484,15 @@ Begin
   Assign(F, FileName);
   ReWrite(F);
 
-  R.Assign( 2, 4, 38, 5 );
-//  GV1 := New( PGrowView, Init( R, (Frec.TCount ShL 1)-1 )); // Количество секторов нужно брать из dpb
+  R.Assign( 2, 4, 42, 5 );
+{  GV1 := New( PGrowView, Init( R, (Frec.TCount ShL 1)-1 )); // Количество секторов нужно брать из dpb }
   GV1 := New( PGrowView, Init( R, (MSTDisk^._dpb.TCount ShL 1)-1 ));
 
   D:=New(PDiskProgressDialog, Init(GV1, ''));
   Desktop^.Insert(D);
   D^.SetCurrentText('Read disk');
 
-//  For Track:=0 To (Frec.TCount ShL 1)-1 Do       // Количество секторов нужно брать из dpb
+{  For Track:=0 To (Frec.TCount ShL 1)-1 Do       // Количество секторов нужно брать из dpb }
   For Track:=0 To (MSTDisk^._dpb.TCount ShL 1)-1 Do
   Begin
     Frec.Track:=Track;
@@ -521,15 +588,15 @@ Begin
   Assign(F,FileName);
   Reset(F);
 
-  R.Assign( 2, 4, 38, 5 );
-//  GV1 := New( PGrowView, Init( R, (Frec.TCount ShL 1)-1 )); // Количество секторов нужно брать из dpb
+  R.Assign( 2, 4, 42, 5 );
+{  GV1 := New( PGrowView, Init( R, (Frec.TCount ShL 1)-1 )); // Количество секторов нужно брать из dpb }
   GV1 := New( PGrowView, Init( R, (MSTDisk^._dpb.TCount ShL 1)-1 ));
 
   D:=New(PDiskProgressDialog, Init(GV1, ''));
   Desktop^.Insert(D);
   D^.SetCurrentText('Write disk');
 
-//  For Track:=0 To (Frec.Tcount ShL 1)-1 Do
+{  For Track:=0 To (Frec.Tcount ShL 1)-1 Do }
   For Track:=0 To (MSTDisk^._dpb.TCount ShL 1)-1 Do
   Begin
     Frec.Track:=Track;
@@ -589,29 +656,10 @@ Constructor TMSTApplication.Init;
 Var
   B:Byte;
   S:ShortString;
-{$ifdef fpc}
-{$ifndef win32}
-  Seg, Ofs:Word;
-{$endif}
-{$endif}
-{
-Const
-  defFrec : TFormRec = (
-    Ssize :3;
-    Gap1  :0;
-    Gap2  :0;
-    SCount:5;
-    TCount:80;
-    Side  :0;
-    Track :0;
-    Sect  :0;
-    Interl:1
-  );
-}
 Begin
   Inherited Init;
   DisableCommands([cmFileInfo, cmEditCategories]);
-//  DiskName:='ESL_00.kdi';
+{  DiskName:='ESL_00.kdi'; }
   Frec.Ssize:=3;
   Frec.Gap1:=0;
   Frec.Gap2:=0;
@@ -620,23 +668,6 @@ Begin
   Frec.Side:=0;
   Frec.Track:=0;
   Frec.Interl:=1;
-  {$ifdef fpc}
-  {$ifndef win32}
-  dosmemget(0, $7A, Seg, 2);
-  dosmemget(0, $78, Ofs, 2);
-  For B:=0 To 9 Do
-    dosmemget(Seg, Ofs + B, Dbt[b], 1);
-  B:=3;   dosmemput(Seg, Ofs + 3, B, 1);
-  B:=5;   dosmemput(Seg, Ofs + 4, B, 1);
-  B:=$E5; dosmemput(Seg, Ofs + 8, B, 1);
-  {$endif}
-  {$else}
-  For B:=0 To 9 Do
-    Dbt[B]:=Mem[MemW[0:$7A]:MemW[0:$78]+B];
-  Mem[MemW[0:$7A]:MemW[0:$78]+3]:=3;
-  Mem[MemW[0:$7A]:MemW[0:$78]+4]:=5;
-  Mem[MemW[0:$7A]:MemW[0:$78]+8]:=$E5;
-  {$endif}
   GetDir(0, S);
   RightWindow:=New(PDOSLongWindow, Init(S{'C:\'}, '*.*'));
 
@@ -695,32 +726,7 @@ begin
 end;
 
 Destructor TMSTApplication.Done;
-{$ifdef fpc}
-{$ifndef win32}
-Var
-  B:Byte;
-  Ofs,Seg:Word;
-{$endif}
-{$else}
-Var
-  B:Byte;
-{$endif}
 Begin
-  {$ifdef fpc}
-  {$ifndef win32}
-  dosmemget(0, $7A, Seg, 2);
-  dosmemget(0, $78, Ofs, 2);
-  For B:=0 To 9 Do
-  begin
-    dosmemput(Seg, Ofs + B, Dbt[b], 1);
-  end;
-  {$endif}
-  {$else}
-  For B:=0 To 9 Do
-  begin
-    Mem[MemW[0:$7A]:MemW[0:$78]+B]:=Dbt[B];
-  end;
-  {$endif}
   Inherited Done;
 End;
 
@@ -728,9 +734,14 @@ Procedure TMSTApplication.Idle;
 Begin
   Inherited Idle;
   If Message(Application, evBroadCast, cmMSTDiskOpen, nil) <> Nil Then
-    DisableCommands([cmReadDisc,cmWriteDisc,cmListDisk,cmFormatDisc,cmSelectDriveA5,cmSelectDriveA3,cmSelectDriveB5,cmSelectDriveB3,cmSelectDriveImage])
+    DisableCommands([cmReadDisc,cmWriteDisc,cmListDisk,cmFormatDisc,
+      cmSelectDriveA5,cmSelectDriveA3,cmSelectDriveB5,cmSelectDriveB3,cmSelectDriveImage])
   Else
-    EnableCommands([cmReadDisc,cmWriteDisc,cmListDisk,cmFormatDisc,cmSelectDriveA5,cmSelectDriveA3,cmSelectDriveB5,cmSelectDriveB3,cmSelectDriveImage]);
+    EnableCommands([cmReadDisc,cmWriteDisc,cmListDisk,cmFormatDisc,
+      cmSelectDriveA5,cmSelectDriveA3,cmSelectDriveB5,cmSelectDriveB3,cmSelectDriveImage]);
+  {$ifdef debug}
+  Heap^.Update;
+  {$endif}
 End;
 
 Var

@@ -20,6 +20,12 @@ which has 80 tracks.
 {$A1}
 {$endif}
 
+{$ifndef win32}
+{$ifdef fpc}
+{..$OPTIMIZATION OFF}
+{$endif}
+{$endif}
+
 Unit MSTDisk;
 
 Interface
@@ -149,6 +155,12 @@ Type
     sp  :FD_SEEK_PARAMS;
     {$endif}
     {$endif}
+    {$ifndef win32}
+    dptOld:array[$00..$0A] of byte;
+    dptNew:array[$00..$0A] of byte;
+    MediaStateOld:Byte;
+    {$endif}
+    DataRate:Byte;
   public
     Constructor Init(_DiskName:Char;Frec:TFormRec;_DataRate:Byte);
     Destructor Done;virtual;
@@ -222,9 +234,10 @@ Uses
 Windows,
 {$else}
 {$endif}
+SysUtils;
+{$else}
+Service;
 {$endif}
-
-Service {$ifdef fpc}, SysUtils {$endif};
 
 Constructor TMSTDisk.Init;
 Begin
@@ -288,20 +301,16 @@ End;
 {$endif}
 
 Constructor TMicroDOSDisk.Init(_DiskName:Char;Frec:TFormRec;_DataRate:Byte);
-{$ifdef fpc}
 {$ifdef win32}
 Var
   lpFileName:PChar;
-  DataRate  :Byte;
   dwRet     :LongWord;
 {$else}
 Var
-  R:TRealRegs;
-{$endif}
+  B:Byte;
 {$endif}
 Begin
   DiskName:=UpCase(_Diskname);
-  {$ifdef fpc}
   {$ifdef win32}
   Case DiskName Of
     'A': lpFileName:='\\.\fdraw0';
@@ -323,20 +332,16 @@ Begin
   {$else}
   Case DiskName Of
     'A': begin DiskAddr:=$490; { outportb($3F7, (inportb($3F7) and $FE));} end;
-    'B': begin DiskAddr:=$491; { outportb($377, (inportb($3F7) and $FE));} end;
+    'B': begin DiskAddr:=$491; { outportb($377, (inportb($377) and $FE));} end;
     Else DiskAddr:=0;
   End;
-  R.ah:=$17;
-  R.al:=$02;
-  R.dl:=DiskAddr - $490;
-  RealIntr($13, R);
-  {$endif}
-  {$else}
-  Case DiskName Of
-    'A': DiskAddr:=$490;
-    'B': DiskAddr:=$491;
-    Else DiskAddr:=0;
-  End;
+  DataRate:=_DataRate;
+  For B:=0 To $0A Do
+    dptOld[B]:=Mem[MemW[0:$7A]:MemW[0:$78]+B];
+  Mem[MemW[0:$7A]:MemW[0:$78]+3]:=3;
+  Mem[MemW[0:$7A]:MemW[0:$78]+4]:=5;
+  Mem[MemW[0:$7A]:MemW[0:$78]+8]:=$E5;
+  MediaStateOld:=Mem[0:DiskAddr];
   {$endif}
   _Frec:=Frec;
   ResetDisk;
@@ -344,7 +349,35 @@ Begin
 End;
 
 Destructor TMicroDOSDisk.Done;
+{$ifndef win32}
+Var
+  B:Byte;
+  {$ifdef fpc}
+  B1:Byte;
+  // FPC версии 3.0.4 в режиме оптимизации O3 генерирует код
+  // dos32, вызывающий ошибку Access Violation
+  // Введение локальной переменной в этом месте
+  // повзоляет ее обойти
+  {$endif}
+{$endif}
 begin
+  {$ifndef win32}
+  For B:=0 To $0A Do
+  Begin
+  {$ifdef fpc}
+    B1:=dptOld[B];
+    Mem[MemW[0:$7A]:MemW[0:$78]+B]:=B1;
+  {$else}
+    Mem[MemW[0:$7A]:MemW[0:$78]+B]:=dptOld[B];
+  {$endif}
+  End;
+  {$ifdef fpc}
+  B1:=MediaStateOld;
+  Mem[0:DiskAddr]:=B1;
+  {$else}
+  Mem[0:DiskAddr]:=MediaStateOld;
+  {$endif}
+  {$endif}
   Inherited Done;
   {$ifdef fpc}
   {$ifdef win32}
@@ -387,6 +420,7 @@ Procedure TMicroDOSDisk.ResetDisk;
 Var
 {$ifdef fpc}
   R:TrealRegs;
+  B:Byte;
 {$endif}
   Disk:Byte;
 {$endif}
@@ -398,14 +432,23 @@ Begin
     Mov DL, Disk
     Int 13H
   End;
-  Mem[0:DiskAddr]:=$54; (* See comment above *)
+  case DataRate Of
+    1:Mem[0:DiskAddr]:=$54; { FD_RATE_300K }
+    2:Mem[0:DiskAddr]:=$94; { FD_RATE_250K }
+  End;
 {$else}
 {$ifndef win32}
-  dpmi_dosmemfillchar(0, DiskAddr, 1, Chr($54));
   Disk:= DiskAddr - $490;
   R.dl:= Disk;
   R.ah:= 0;
   RealIntr($13, R);
+  { 0=500Kbps (HD), 1=300Kbps (DD 5.25"), 2=250Kbps (DD 3.5"), 3=1Mbps (ED) }
+  case DataRate Of
+    1:Mem[0:DiskAddr]:=$54; { FD_RATE_300K }
+    2:Mem[0:DiskAddr]:=$94; { FD_RATE_250K }
+  End;
+//  dpmi_dosmemput(0, DiskAddr, B, 1);
+
 {$else}
 
 {$endif}
@@ -436,10 +479,11 @@ Var
 {$endif}
 Begin
   {$ifndef fpc}
-{  Mem[0:DiskAddr]:=$54;}
+  case DataRate Of
+    1:Mem[0:DiskAddr]:=$54; { FD_RATE_300K }
+    2:Mem[0:DiskAddr]:=$94; { FD_RATE_250K }
+  End;
   Disk :=DiskAddr - $490;
-
-  (* See comment above *)
 
   FillChar(Block,512,0);
   S:=0;
@@ -508,8 +552,14 @@ Begin
   else
     FormatTrack:=0;
   {$else}
-  { dpmi_dosmemfillchar(0, DiskAddr, 1, Chr($54)); }
+  { 0=500Kbps (HD), 1=300Kbps (DD 5.25"), 2=250Kbps (DD 3.5"), 3=1Mbps (ED) }
+  case DataRate Of
+    1:Mem[0:DiskAddr]:=$54; { FD_RATE_300K }
+    2:Mem[0:DiskAddr]:=$94; { FD_RATE_250K }
+  End;
+//  dpmi_dosmemput(0, DiskAddr, B, 1);
   Disk :=DiskAddr - $490;
+
   (* See comment above *)
 
   FillChar(Block,512,0);
@@ -554,6 +604,7 @@ Var
   R:TRealRegs;
   Disk: Byte;
   Err: Byte;
+  B  : Byte;
 {$endif}
 {$else}
   _Flag:Byte;
@@ -564,8 +615,10 @@ Var
 Begin
 
   {$ifndef fpc}
-{  Mem[0:DiskAddr]:=$54;}
-
+  case DataRate Of
+    1:Mem[0:DiskAddr]:=$54; { FD_RATE_300K }
+    2:Mem[0:DiskAddr]:=$94; { FD_RATE_250K }
+  End;
   Disk :=DiskAddr - $490;
 
   {  frec.side:=frec.track and 1;
@@ -619,7 +672,12 @@ Begin
   Else
     ReadSect:=0;
   {$else}
-  dpmi_dosmemfillchar(0, DiskAddr, 1, Chr($54));
+  { 0=500Kbps (HD), 1=300Kbps (DD 5.25"), 2=250Kbps (DD 3.5"), 3=1Mbps (ED) }
+  case DataRate Of
+    1:Mem[0:DiskAddr]:=$54; { FD_RATE_300K }
+    2:Mem[0:DiskAddr]:=$94; { FD_RATE_250K }
+  End;
+//  dpmi_dosmemput(0, DiskAddr, B, 1);
   Disk :=DiskAddr - $490;
 
   CopyToDOS(Buf, SizeOf(Buf));
@@ -656,6 +714,7 @@ Var
   R:TRealRegs;
   Err           : Byte;
   Disk          : Byte;
+  B             : Byte;
 {$endif}
 {$else}
   _Flag         : Byte;
@@ -665,7 +724,10 @@ Var
 {$endif}
 Begin
   {$ifndef fpc}
-{  Mem[0:DiskAddr]:=$54;}
+  case DataRate Of
+    1:Mem[0:DiskAddr]:=$54; { FD_RATE_300K }
+    2:Mem[0:DiskAddr]:=$94; { FD_RATE_250K }
+  End;
   Disk :=DiskAddr - $490;
 
   {  frec.side:=frec.track and 1;
@@ -725,7 +787,12 @@ Begin
   Else
     WriteSect:=0;
   {$else}
-  dpmi_dosmemfillchar(0, DiskAddr, 1, Chr($54));
+  { 0=500Kbps (HD), 1=300Kbps (DD 5.25"), 2=250Kbps (DD 3.5"), 3=1Mbps (ED) }
+  case DataRate Of
+    1:Mem[0:DiskAddr]:=$54; { FD_RATE_300K }
+    2:Mem[0:DiskAddr]:=$94; { FD_RATE_250K }
+  End;
+//  dpmi_dosmemput(0, DiskAddr, B, 1);
   Disk :=DiskAddr - $490;
 
   CopyToDOS(Buf, SizeOf(Buf));
@@ -805,7 +872,7 @@ var
   Errc:Byte;
 begin
   Errc:=0;
-//  If BlockNumber > BlockCount Then
+{  If BlockNumber > BlockCount Then }
   If BlockNumber > _Dpb.Dsize Then
     FillChar(_pblock(pointer(block))^, 2048, $00)
   Else
@@ -841,7 +908,7 @@ var
    Errc:Byte;
 begin
    Errc:=0;
-//   If BlockNumber > BlockCount Then
+{   If BlockNumber > BlockCount Then }
    If BlockNumber > _Dpb.Dsize Then
    Else
    Begin
@@ -950,7 +1017,9 @@ end;
 destructor TMicroDOSDiskImage.Done;
 begin
   {$ifndef fpc}
+  {$I-}
   Close(F);
+  {$I+}
   {$else}
   FileClose(hMST);
   {$endif}
@@ -1001,14 +1070,11 @@ begin
 end;
 
 Function TMicroDOSDiskImage.WriteSect(Frec:TFormRec;Var Buf:TBufType):Word;
-var
-   L:LongInt;
 begin
   { Frec.Side:=Frec.Track And 1;  }
   { Frec.Track:=Frec.Track ShR 1; }
   { Frec.Sect:=Frec.Sect;         }
 
-  L:=(LongInt(Frec.Track) * LongInt(Frec.Scount) + LongInt(Frec.Sect-1)) * 1024;
   {$ifndef fpc}
   {$I-}
   Seek(F, (LongInt(Frec.Track) * LongInt(Frec.Scount) + LongInt(Frec.Sect-1)) * 1024);

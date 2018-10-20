@@ -31,12 +31,12 @@ var
   T       : PStaticText;
 begin
 {  R.Assign( 0, 0, 40, 11 );}
-  R.Assign( 0, 0, 40, 15 );
+  R.Assign( 0, 0, 44, 15 );
   TDialog.Init( R, ATitle );
   Options := Options or ofCentered;
 
-  R.Assign(2,2,38,3);
-  New(T, Init(R, '     Current operation progress       '));
+  R.Assign(2,2,42,3);
+  New(T, Init(R, #3'Current operation progress'));
   Insert(T);
   CurrentText := T;
 

@@ -26,6 +26,17 @@ function  ChangeFileExt(const FileName, Extension: string): string;
 function  GetFileExt(const FileName:String):String;
 function  GetMSXFileName(const FileName:String):String;
 function  strupr(S:String):String;
+{$ifndef fpc}
+function  LeftStr(S:String; Count:Integer):String;
+function  ExtractFileName(AFile: String): String;
+function  ExtractFileExt(AFile:String):String;
+function  UpperCase(S:String):String;
+function  ExpandFileName(S:String):String;
+function  FileExists(AFile:String):Boolean;
+function  FileGetAttr(S:String):Word;
+function  DeleteFile(FileName:String):Boolean;
+function  RenameFile(OldFileName, NewFileName:String):Boolean;
+{$endif}
 
 implementation
 
@@ -126,4 +137,100 @@ begin
      S[i]:=UpCase(S[i]);
   strupr:=S;
 end;
+{컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴}
+{$ifndef fpc}
+function LeftStr(S:String; Count:Integer):String;
+Begin
+  LeftStr:=Copy(S, 1, Count);
+End;
+{컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴}
+
+{****************************************************************************}
+{ ExtractFileName                       }
+{****************************************************************************}
+function ExtractFileName(AFile: String): String;
+var
+  D: DirStr;
+  N: NameStr;
+  E: ExtStr;
+begin
+  FSplit(AFile,D,N,E);
+  ExtractFileName := N;
+end;
+{컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴}
+function ExtractFileExt(AFile:String):String;
+var
+  D: DirStr;
+  N: NameStr;
+  E: ExtStr;
+begin
+  FSplit(AFile,D,N,E);
+  ExtractFileExt := E;
+End;
+{컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴}
+function UpperCase(S:String):String;
+Begin
+  UpperCase:=strupr(S);
+End;
+{컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴}
+function ExpandFileName(S:String):String;
+Begin
+ { TODO }
+ ExpandFileName:=S;
+End;
+{컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴}
+{****************************************************************************}
+{ FileExists                         }
+{****************************************************************************}
+function FileExists (AFile : String) : Boolean;
+begin
+  FileExists := (FSearch(AFile,'') <> '');
+end;
+{컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴}
+function FileGetAttr(S:String):Word;
+Var
+  F:File;
+  W:Word;
+Begin
+  Assign(F, S);
+  {$I-}
+  GetFAttr(F, W);
+  {$I+}
+  If IOResult = 0 Then
+    FileGetAttr:=W
+  Else
+    FileGetAttr:=0;
+End;
+{컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴}
+function DeleteFile(FileName:String):Boolean;
+Var
+  F:File;
+Begin
+  Assign(F, FileName);
+  {$I-}
+  Erase(F);
+  {$I+}
+  If IOResult = 0 Then
+    DeleteFile:=True
+  else
+    DeleteFile:=False;
+End;
+{컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴}
+function RenameFile(OldFileName, NewFileName:String):Boolean;
+Var
+  F:File;
+Begin
+  Assign(F, OldFileName);
+  {$I-}
+  Rename(F, NewFilename);
+  {$I+}
+  If IOResult = 0 Then
+    RenameFile:=True
+  else
+    RenameFile:=False;
+
+End;
+{컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴}
+{$endif}
+
 end.

@@ -21,15 +21,12 @@ Uses
 SysUtils,
 {$endif}
 
-Views, StdDlg, Dialogs, Drivers, Objects, MSTDisk, MsgBox {$ifndef fpc} ,Service {$endif}, part3msx;
+Views, StdDlg, Dialogs, Drivers, Objects, MSTDisk, MsgBox {$ifndef fpc} ,Service {$endif}, part3msx, MstConst;
 
 {$ifndef fpc}
 Type
   Sw_Integer = Integer;
 {$endif}
-
-type
-  TSortMode = (psmName, psmExt, psmSize,  psmUnsorted);
 
 Type
 
@@ -72,7 +69,6 @@ Type
     Procedure ViewFileEx;virtual;
     Procedure DeleteFile;Virtual;
     Procedure CopyFile;Virtual;
-    Procedure FileInfo;virtual;
     Function FileExists(FileName:ShortString; User:Byte):Boolean;virtual;
     Function GetPalette: PPalette; virtual;
   End;
@@ -104,7 +100,7 @@ Type
 
 Implementation
 
-Uses App, Dos, MstConst {$ifdef fpc}, FViewer {$endif};
+Uses App, Dos {$ifdef fpc}, FViewer {$endif}, GrowView, AppWin, AppWinEx;
 
 type
   PSearchRec = ^TSearchRec;
@@ -151,7 +147,6 @@ Var
   SortMode:TSortMode;
 
   Rslt:Word;
-  Errc:Byte;
 begin
 
   While true Do
@@ -161,12 +156,20 @@ begin
     Rslt:= MessageBox(#3'Catalog not ready, retry?', Nil, mfError +
        mfYesNoCancel);
     If Rslt = cmCancel Then
+    Begin
+      {$Ifdef fpc}
       Exit (False);
+      {$else}
+      ReadDir:=False;
+      Exit;
+      {$endif}
+    End;
     If Rslt = cmNo Then
       Break;
     PMSTShortWindow(Owner)^.MSTDisk^.ResetDisk;
   End;
 
+  SortMode:=psmExt;
   If Assigned(List) Then
   Begin
     SortMode:=PCPMFileCollection(List)^.SortMode;
@@ -307,7 +310,11 @@ begin
 
   Newlist(Filelist);
 
+  {$Ifdef fpc}
   Exit (True);
+  {$else}
+  ReadDir:=True;
+  {$endif}
 end;
 {---------------------------------------------------------}
 procedure TMSTFileList.Sort(SortMode:TSortMode);
@@ -339,6 +346,10 @@ function TMSTFileList.GetText(Item: Integer; MaxLen: Integer): String;
 var
   S: String;
   SR: PMSTSearchRec;
+{$Ifndef fpc}
+  SizeTxt:String;
+  UserTxt:String;
+{$endif}
 begin
   SR := PMSTSearchRec(List^.At(Item));
   {$ifdef fpc}
@@ -347,7 +358,13 @@ begin
                         Chr(Byte(SR^.Ext[2]) And $7F) + '  ' + Format('%8d', [LongInt(SR^.Recs) * 128 + LongInt(SR^.Exn)]);}
   S:= SR^.Name + '  ' + Format('%8d', [SR^.Size]) + Format('%4d', [SR^.User]);
   {$else}
-  S := SR^.Name;
+  SizeTxt:=IntToStr(SR^.Size);
+  While Length(SizeTxt) < 8 do
+    SizeTxt:=' '+ SizeTxt;
+  While Length(UserTxt) < 4 do
+    UserTxt:=' '+ UserTxt;
+  UserTxt:=IntToStr(SR^.User);
+  S := SR^.Name + '  ' + SizeTxt + ' ' + UserTxt;
   {$endif}
   GetText := S;
 end;
@@ -578,7 +595,7 @@ Begin
         ViewFile;
         ClearEvent(Event);
       End;
-      cmDelete:
+      cmDeleteFile:
       begin
         DeleteFile;
         ClearEvent(Event);
@@ -589,7 +606,6 @@ Begin
         ClearEvent(Event);
       end;
 }
-      cmFileInfo: FileInfo;
     End;
     evKeyDown:
     Case Event.KeyCode of
@@ -639,7 +655,6 @@ Var
 begin
 
   ExistSelected:=False;
-
   P := PMSTSearchRec(@P);
 
   For Item:=0 to Lb^.List^.Count - 1 do
@@ -771,7 +786,6 @@ begin
   Lb^.GetData(P);
 }
 
-
   Assign(_F, FileName);
   ReWrite(_F,1);
 
@@ -844,7 +858,6 @@ begin
 
   SaveFileAs(FileName, P);
 
-{   Dispose(pcat, Done);}
   {$endif}
 end;
 {---------------------------------------------------------}
@@ -900,9 +913,9 @@ Var
   H: PFileWindow;
 {  R: TRect; }
   P: PMSTSearchRec;
-{$endif}
   BASFile:PBASFile;
   BASFileName:String;
+{$endif}
 begin
 {$ifdef fpc}
   P := PMSTSearchRec(@P);
@@ -1160,23 +1173,38 @@ Var
   W:Word;
   FileNames:Array[0..1] Of ShortString;
   ExistSelected:Boolean;
+  SelectedCount:Word;
   Item:LongInt;
+  D:PProgressDialog;
+  Counter:Word;
+  R:TRect;
+Const
+  GV1 : PGrowView = nil;
 Const
   IllegalChars:set of char = ['*',':','?','<','>','|','"','/','\'];
 begin
 
   ExistSelected:=False;
+  SelectedCount:=0;
   P := PMSTSearchRec(@P);
 
   { Проверяем, есть ли выбранные файлы по INS }
 
   For Item:=0 to Lb^.List^.Count - 1 do
+  Begin
+    If Lb^.IsSelected(Item) Then
+      Inc(SelectedCount);
     ExistSelected := ExistSelected Or Lb^.IsSelected(Item);
+  End;
 {    ExistSelected := ExistSelected Or PMSTSearchRec(Lb^.List^.At(Item))^.Selected; }
 
   If ExistSelected Then
   Begin
-
+    R.Assign( 2, 4, 42, 5 );
+    GV1 := New( PGrowView, Init(R, SelectedCount));
+    D:=New(PDiskProgressDialog, Init(GV1, ''));
+    Desktop^.Insert(D);
+    Counter:=0;
     For Item:=0 to Lb^.List^.Count - 1 do
     Begin
       P := PMSTSearchRec(Lb^.List^.At(Item));
@@ -1205,15 +1233,17 @@ begin
         {$else}
         { TODO BP }
         {$endif}
+        Begin
+          D^.SetCurrentText('Copy file ' + FileNames[0]);
+          Inc(Counter);
+          GV1^.Update(Counter);
           Message(Application, evBroadCast, cmCopyFileMST, @FileNames);
-
+        End;
         P^.Selected:=False;
-
+        Draw;
       End;
     End;
-
-    Draw;
-
+    Dispose(D, Done);
   End
   Else If Lb^.List^.Count > 0 Then
   Begin
@@ -1248,43 +1278,6 @@ begin
       Message(Application, evBroadCast, cmCopyFileMST, @FileNames);
     end;
   End;
-end;
-{---------------------------------------------------------}
-Procedure TMSTShortWindow.FileInfo;
-Var
-  P:PMSTSearchRec;
-  InfoRec:TFileInfoRec;
-  W:Word;
-Begin
-
-  P := PMSTSearchRec(@P);
-
-  If Lb^.List^.Count > 0 Then
-  Begin
-
-    Lb^.GetData(P);
-    {$ifdef fpc}
-    InfoRec.FileName:=Trim(P^.FName) + '.' + Trim(P^.FExt);
-    {$else}
-    InfoRec.FileName:=(P^.FName) + '.' + (P^.FExt); { TODO BP }
-    {$endif}
-
-    {$ifdef fpc}
-    InfoRec.TempFileName:=GetTempFileName;
-    {$else}
-    InfoRec.TempFileName:='TEMP.TMP'; { TODO BP }
-    {$endif}
-
-    SaveFileAs(InfoRec.TempFileName, P);
-    {$ifdef fpc}
-    If SysUtils.FileExists(InfoRec.TempFileName) Then
-    {$else}
-    { TODO BP }
-    {$endif}
-    begin
-      Message(Application, evCommand, cmFileInfoShow, @InfoRec);
-    end;
-  end;
 end;
 {---------------------------------------------------------}
 Function TMSTShortWindow.FileExists(FileName: ShortString; User: Byte):Boolean;
