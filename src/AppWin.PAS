@@ -1,20 +1,20 @@
 {************************************************}
 {                                                }
 { Copyright (C) 1997 Michael Radchenko           }
-{ Portions Copyright (C) 2009 MarinovSoft        }
+{ Portions Copyright (C) 2009-2018 MarinovSoft   }
 {                                                }
 {************************************************}
 {*$X+,G+,D-,L-,S-,R-}
 
 {$ifdef fpc}
-{$A1}
+{$A1, H-}
 {$endif}
 
 unit AppWin;
 
 interface
 
-Uses Objects, GrowView, Dialogs, Views, Drivers, Service, App;
+Uses Objects, GrowView, Dialogs, Views, Drivers, App;
 
 const
 
@@ -90,6 +90,8 @@ Type
 {컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴}
 implementation
 
+Uses Service;
+
 {컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴}
 constructor TProgressDialog.Init(var GV1{, GV2} : PGrowView; ATitle : String);
 var
@@ -131,14 +133,18 @@ end;
 {컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴}
 procedure TProgressDialog.SetCurrentText(AText : String);
 begin
-  CurrentText^.Text^ := #3+AText;
+  If (CurrentText^.Text) <> nil Then
+    DisposeStr(CurrentText^.Text);
+  CurrentText^.Text := NewStr(#3+AText);
   CurrentText^.Draw;
 end;
 
 {컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴}
 procedure TProgressDialog.SetTotalText(AText : String);
 begin
-  TotalText^.Text^ := #3+AText;
+  If (TotalText^.Text) <> nil Then
+    DisposeStr(TotalText^.Text);
+  TotalText^.Text := NewStr(#3+AText);
   TotalText^.Draw;
 end;
 
@@ -220,7 +226,7 @@ end;
 procedure   TInfoWindow.SaveResults(var F: Text);
 var
   I : Integer;
-  S : String;
+{  S : String; }
 begin
   System.WriteLn(F, Separator('MXSCAS log file'));
   for I := 1 to ScreenText^.LinesCount do

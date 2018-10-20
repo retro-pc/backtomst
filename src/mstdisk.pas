@@ -1125,7 +1125,7 @@ Begin
 {$Ifdef fpc}
   GetDiskNameEx:='MST Disk image ' + SysUtils.ExtractFileName(FileName);
 {$else}
-  GetDiskNameEx:='MST Disk image '; { TODO BP }
+  GetDiskNameEx:='MST Disk image ' + ExtractFileName(FileName); { TODO BP }
 {$endif}
 End;
 

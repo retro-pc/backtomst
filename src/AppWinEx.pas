@@ -13,7 +13,7 @@ unit AppWinEx;
 
 interface
 
-Uses Objects, GrowView, Dialogs, Views, Drivers, Service, App, AppWin;
+Uses Objects, GrowView, Dialogs, Views, Drivers, AppWin;
 
 Type
 
@@ -22,7 +22,11 @@ Type
     constructor Init(var GV1: PGrowView; ATitle : String);
   end;
 
+Function isCancel(pd:PDialog):Boolean;
+
 implementation
+
+Uses MsgBox;
 
 constructor TDiskProgressDialog.Init(var GV1: PGrowView; ATitle : String);
 var
@@ -51,5 +55,31 @@ begin
   Insert(B);
 
 end;
+
+Function isCancel(pd:PDialog):Boolean;
+Var
+  Event:TEvent;
+  Rslt:Word;
+Begin
+  pd^.GetEvent(Event);
+  pd^.HandleEvent(Event);
+  If Event.What = evCommand Then
+    If Event.Command = cmCancel Then
+    Begin
+      {$ifdef fpc}
+      Exit (MessageBox(#3'Are you sure want to cancel?', Nil, mfConfirmation +
+        mfYesButton + mfNoButton) = cmYes);
+      {$else}
+      isCancel:=MessageBox(#3'Are you sure want to cancel?', Nil, mfConfirmation +
+        mfYesButton + mfNoButton) = cmYes;
+      Exit;
+      {$endif}
+    End;
+  {$ifdef fpc}
+  Exit (False);
+  {$else}
+  isCancel:=False;
+  {$endif}
+End;
 
 end.

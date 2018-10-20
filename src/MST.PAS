@@ -17,9 +17,15 @@
 {$ifdef fpc}
 {$A1}
 {$R-}
+{$else}
+{$M 49152, 0, 655360}
 {$endif}
 
-Uses App, Objects, Views, Menus, Drivers, Stddlg,
+{$ifndef fpc}
+{$define debug}
+{$endif}
+
+Uses App, Objects, Views, Menus, Drivers, Stddlg, Dialogs,
   Msgbox, GrowView, AppWin, Mstconst, MSTDisk, AppWinEx, MstDlg, DosDlg, FV_Const {$ifdef debug}, GadGets {$endif}
 {$ifdef fpc}
 {$ifndef win32}
@@ -236,6 +242,14 @@ Begin
       Begin
         Message(@Self, evCommand, cmNext, @Self);
       End;
+      kbAltF2:
+      Begin
+{        Event.What:=evCommand;
+        Event.Command:=cmSelectDrive;
+        PutEvent(Event);
+        ClearEvent(Event);}
+        Message(@Self, evBroadCast, cmSelectDrive, nil);
+      End;
     End;
   End;
   If Event.What = evBroadcast Then
@@ -331,6 +345,12 @@ Begin
   Track:=0; Errc:=0;
   While Track <= (Frec.TCount ShL 1)-1 Do
   Begin
+    If (not (DiskName[0] > #1)) and isCancel(D) Then
+    Begin
+       Dispose(MSTDisk, Done);
+       Dispose(D,Done);
+       Exit;
+    End;
     Frec.Track:=Track;
     MSTDisk^.SeekTrack(Frec);
     If (Track) and 1 = 0 Then
@@ -373,6 +393,12 @@ Begin
   GV2^.Update(0);
   While Track <= (Frec.TCount ShL 1)-1 Do
   Begin
+    if (not (DiskName[0] > #1)) and isCancel(D) Then
+    Begin
+       Dispose(MSTDisk, Done);
+       Dispose(D,Done);
+       Exit;
+    End;
     Frec.Track:=Track;
     MSTDisk^.SeekTrack(Frec);
     If (Track) and 1 = 0 Then
@@ -442,7 +468,7 @@ Var
   Track:Byte;
   Sect:Byte;
   Errc:Byte;
-  F:File Of TBufType;
+  F:PStream;
   Buf:TBufType;
   Rslt:Word;
   MSTDisk:PMSTDisk;
@@ -464,7 +490,7 @@ Begin
 
   If FileExists(FileName) Then
   Begin
-    Rslt:= MessageBox('File exists, overwrite?', Nil, mfError +
+    Rslt:= MessageBox(#3'File exists, overwrite?', Nil, mfConfirmation +
       mfOKCancel);
     If Rslt = cmCancel Then
       Exit;
@@ -481,8 +507,13 @@ Begin
 
   MSTDisk^.ReadDPB;
 
-  Assign(F, FileName);
-  ReWrite(F);
+  F:=New(PBufStream, Init(FileName, stCreate, SizeOf(Buf)));
+  If F^.ErrorInfo <> stOk Then
+  Begin
+    Dispose(MSTDisk, Done);
+    MessageBox(#3'Can''t create file.', Nil, mfError + mfOkButton);
+    Exit;
+  End;
 
   R.Assign( 2, 4, 42, 5 );
 {  GV1 := New( PGrowView, Init( R, (Frec.TCount ShL 1)-1 )); // Количество секторов нужно брать из dpb }
@@ -501,6 +532,13 @@ Begin
     Sect:=1;
     While Sect <= Frec.SCount Do
     Begin
+      if (not (DiskName[0] > #1)) and isCancel(D) Then
+      Begin
+         Dispose(MSTDisk, Done);
+         Dispose(D,Done);
+         Dispose(F, Done);
+         Exit;
+      End;
       Frec.Sect:= Sect;
       { rsect(sct,trk,buf,flag,errc);}
       FillChar(Buf,SizeOf(Buf),0);
@@ -508,7 +546,7 @@ Begin
       If Errc = 0 Then
       Begin
         Inc(Sect);
-        Write(F,Buf)
+        F^.Write(Buf, SizeOf(Buf));
       End
       Else
       Begin
@@ -527,14 +565,14 @@ Begin
         Begin
           { Нажали No - пропустим, записав нули }
           Inc(Sect);
-          Write(F,Buf);
+          F^.Write(Buf, SizeOf(Buf));
         End;
         If Rslt = cmCancel Then
         Begin
           { Нажали отмена - закроем файл без записи }
           Dispose(MSTDisk, Done);
           Dispose(D,Done);
-          Close(F);
+          Dispose(F, Done);
           Exit;
         End;
       End;
@@ -542,7 +580,7 @@ Begin
   End;
   Dispose(MSTDisk, Done);
   Dispose(D,Done);
-  Close(F);
+  Dispose(F, Done);
 End;
 
 Procedure TMSTApplication.WriteDisk;
@@ -550,7 +588,7 @@ Var
   Track:Byte;
   Sect:Byte;
   Errc:Byte;
-  F:File Of TBufType;
+  F:PStream;
   Buf:TBufType;
   Rslt:Word;
   MSTDisk:PMSTDisk;
@@ -585,8 +623,13 @@ Begin
 
   MSTDisk^._Dpb:=Dpb;
 
-  Assign(F,FileName);
-  Reset(F);
+  F:=New(PBufStream, Init(FileName, stOpenRead, SizeOf(Buf)));
+  If F^.ErrorInfo <> stOk Then
+  Begin
+    Dispose(MSTDisk, Done);
+    MessageBox(#3'Can''t open file.', Nil, mfError + mfOkButton);
+    Exit;
+  End;
 
   R.Assign( 2, 4, 42, 5 );
 {  GV1 := New( PGrowView, Init( R, (Frec.TCount ShL 1)-1 )); // Количество секторов нужно брать из dpb }
@@ -605,15 +648,20 @@ Begin
     Sect:=1;
     While Sect <= Frec.SCount Do
     Begin
-      If (FileSize(F) - FilePos(F)) <= 0 Then
+      If (F^.GetSize - F^.GetPos) <= 0 Then
       Begin
         { Close(F);
          Exit; }
         Break;
       End;
-      {$I-}
-      Read(F,Buf);
-      {$I+}
+      if (not (DiskName[0] > #1)) and isCancel(D) Then
+      Begin
+         Dispose(MSTDisk, Done);
+         Dispose(D,Done);
+         Dispose(F, Done);
+         Exit;
+      End;
+      F^.Read(Buf, SizeOf(Buf));
       Frec.Sect:= Sect;
       { rsect(sct,trk,buf,flag,errc);}
       Errc:=MSTDisk^.WriteSect(Frec, Buf);
@@ -641,7 +689,7 @@ Begin
           { Нажали отмена - закроем файл без записи }
           Dispose(MSTDisk, Done);
           Dispose(D,Done);
-          Close(F);
+          Dispose(F, Done);
           Exit;
         End;
       End;
@@ -649,7 +697,7 @@ Begin
   End;
   Dispose(MSTDisk, Done);
   Dispose(D,Done);
-  Close(F);
+  Dispose(F, Done);
 End;
 
 Constructor TMSTApplication.Init;
@@ -684,6 +732,11 @@ Begin
     End;
     Dec(B)
   End;
+  {$ifdef fpc}
+  {$ifdef VER3_0_4}
+  FirstDotAtFileNameStartIsExtension:=True;
+  {$endif}
+  {$endif}
 End;
 
 Procedure TMSTApplication.SelectDriveImage;

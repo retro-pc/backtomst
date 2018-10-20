@@ -13,6 +13,10 @@ Interface
 Uses {$Ifdef fpc} SysUtils, {$Endif} Stddlg, Objects, Views, Drivers, Dialogs, Dos, MSTConst;
 {---------------------------------------------------------}
 
+{$ifdef fpc}
+{$H-}
+{$endif}
+
 {$Ifndef fpc}
 {$V-}
 Type
@@ -59,6 +63,7 @@ Type
     Procedure CopyFile; virtual;
     Procedure AddFile(FileNames:TFileNames); virtual;
     Procedure DeleteDOSFile;virtual;
+    Procedure SelectDrive;virtual;
     Function GetPalette: PPalette; virtual;
   End;
   {---------------------------------------------------------}
@@ -81,7 +86,7 @@ Type
   {---------------------------------------------------------}
 Implementation
 
-Uses App, MsgBox, {$Ifdef fpc} FVConsts, FViewer, {$else} Service, {$Endif} part3msx, GrowView, AppWin, AppWinEx;
+Uses App, MsgBox, {$Ifdef fpc} FVConsts, FViewer, {$else} Service, {$Endif} part3msx, GrowView, AppWin, AppWinEx, DrvSel;
 
 {$Ifndef fpc}
 Const
@@ -306,6 +311,8 @@ Var
   Name: NameStr;
   Ext : ExtStr;
 begin
+  If mFileList^.List^.Count < 1 Then
+    Exit;
   P:= PDOSSearchRec(@P);
   mFileList^.GetData(P);
   if (P^.Attr And Directory) <> 0 Then
@@ -490,6 +497,9 @@ Var
 {$endif}
 begin
 {$ifdef fpc}
+  If mFileList^.List^.Count < 1 Then
+    Exit;
+
   mFileList^.GetData(P);
 
   FileName:= CurDir;
@@ -526,6 +536,9 @@ Var
 {$endif}
 begin
 {$ifdef fpc}
+  If mFileList^.List^.Count < 1 Then
+    Exit;
+
   mFileList^.GetData(P);
 
   FileName:= CurDir;
@@ -560,6 +573,79 @@ begin
     end;
 {$endif}
 end;
+
+Procedure TDOSShortWindow.SelectDrive;
+Var
+  D:PDriveSelectDialog;
+  R:TRect;
+  Drive:Char;
+  NewTitle:ShortString;
+  S:ShortString;
+  Res:Word;
+Begin
+
+  Desktop^.GetExtent(R);
+  R.A.X:=R.B.X div 2;
+  If R.B.X - R.A.X > 22 Then
+  Begin
+    R.A.X:=(R.B.X + R.A.X) div 2 - 11;
+    R.B.X:=R.A.X + 22;
+  End;
+  If R.B.Y - R.A.Y > 10 Then
+  Begin
+    R.A.Y:=(R.B.Y + R.A.Y) div 2 - 5;
+    R.B.Y:=R.A.Y + 10;
+  End;
+
+  D:=New(PDriveSelectDialog, Init(R, CurDir[1]));
+  Res:=Desktop^.ExecView(D);
+  If Res = cmOk Then
+    Drive:=D^.GetDrive;
+  Dispose(D, Done);
+  If Res = cmOk Then
+  Begin
+    {$I-}
+    ChDir(CurDir);
+    {$I+}
+    GetDir(Byte(Drive) - Byte('A') + 1, S);
+    {$I-}
+    ChDir(S);
+    {$I+}
+    If IOResult <> 0 Then
+    Begin
+      MessageBox(#3'Can''t change drive!', nil, mfOkButton + mfError);
+      Exit;
+    End
+    else
+      CurDir:=S;
+
+    While CurDir[Length(Curdir)] = '\' do
+      {$ifdef fpc}
+      CurDir:=LeftStr(CurDir, Length(CurDir) - 1);
+      {$else}
+      CurDir:=Copy(CurDir, 1, Length(CurDir) - 1);
+      {$endif}
+
+    CurDir:=CurDir + '\';
+
+    If Length(CurDir) = 3 Then
+      NewTitle:=TruncPathStr(CurDir, Size.X - 16)
+    Else
+      {$ifdef fpc}
+      NewTitle:=TruncPathStr(LeftStr(CurDir, Length(CurDir) - 1), Size.X - 16);
+      {$else}
+      NewTitle:=TruncPathStr(Copy(CurDir, 1, Length(CurDir) - 1), Size.X - 16);
+      {$endif}
+
+    DisposeStr(Title);
+    Title :=NewStr(NewTitle);
+    Redraw;
+
+    mFileList^.ReadDirectory(CurDir + CurMask);
+
+  End;
+
+End;
 
 procedure TDOSFileList.ReadDirectory(AWildCard: PathStr);
 const
@@ -756,6 +842,26 @@ begin
         End;
       End;
     End;
+    evMouseDown:
+      If (Event.Buttons = mbRightButton) Then
+      Begin
+         inherited HandleEvent(Event);
+         If List^.Count > 0 Then
+         Begin
+           P := PDOSSearchRec(@P);
+           P := List^.At(Focused);
+           {$ifdef fpc}
+           If P^.Attr And faDirectory <> faDirectory Then
+           {$else}
+           If P^.Attr And Directory <> Directory Then
+           {$endif}
+           Begin
+             P^.Selected:=not P^.Selected;
+             Draw;
+           End;
+         End;
+         ClearEvent(Event);
+      End;
   evBroadCast:
     Case Event.Command of
       cmListItemSelected:
@@ -772,7 +878,10 @@ begin
             Begin
               P^.Selected:=not P^.Selected;
               If List^.Count - 1 > Focused Then
+              Begin
                 Inc(Focused);
+                FocusItem(Focused);
+              End;
               Draw;
             End;
           End;
@@ -936,11 +1045,12 @@ Begin
         End;
       end;
     end;
-    evMouseDown: if Event.Double And (Event.Buttons = mbLeftButton) Then
-    begin
-      ChangeDir;
-      ClearEvent(Event);
-    end;
+    evMouseDown:
+      if Event.Double And (Event.Buttons = mbLeftButton) Then
+      begin
+         ChangeDir;
+         ClearEvent(Event);
+      end;
     evCommand:
       Case Event.Command Of
         cmDeleteFile:
@@ -970,6 +1080,11 @@ Begin
         begin
           FileNames:=Event.InfoPtr;
           AddFile(FileNames^);
+          ClearEvent(Event);
+        End;
+        cmSelectDrive:
+        Begin
+          SelectDrive;
           ClearEvent(Event);
         End;
       End;
@@ -1029,7 +1144,8 @@ begin
             D^.SetCurrentText('Copy file ' + P^.Name);
             Inc(Counter);
             GV1^.Update(Counter);
-            { Message(Application, evCommand, cmCopyFileDOS, @FileName); }
+            if isCancel(D) Then
+              Break;
             Message(Application, evBroadCast, cmCopyFileDOS, @FileName);
           end;
         P^.Selected:=False;
@@ -1038,7 +1154,7 @@ begin
     End;
     Dispose(D, Done);
   End
-  Else
+  Else If mFileList^.List^.Count > 0 Then
   Begin
     mFileList^.GetData(P);
 
@@ -1180,7 +1296,7 @@ Begin
     Dispose(D, Done);
     mFileList^.ReadDirectory(CurDir + CurMask);
   End
-  Else
+  Else If mFileList^.List^.Count > 0 Then
   Begin
     mFileList^.GetData(P);
 

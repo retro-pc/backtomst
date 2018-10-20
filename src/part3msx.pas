@@ -3,11 +3,24 @@
 {$else}
 {$N+}
 {$endif}
+
+{$ifdef fpc}
+{.$define Uses_FViewer}
+{$endif}
+
 Unit Part3Msx;
 
 Interface
 
 Uses Objects;
+
+Const
+  MSXNoError = 0;
+  MSXError1 = 1;                   { Byte 1 Error }
+  MSXError2 = 2;                   { Byte 10 Error }
+  MSXError3 = 3;                   { Byte 11 Error }
+Var
+  MSXError:Byte;
 
 Type
   PBasFile = ^TBasFile;
@@ -29,26 +42,23 @@ Type
 
 Implementation
 
-Uses Msbin, {$ifdef fpc} SysUtils, FViewer {$else} Service {$endif} ;
+Uses Msbin, {$ifdef fpc} SysUtils {$ifdef Uses_FViewer}, FViewer {$endif} {$else} Service {$endif} ;
 
 Constructor TBasFile.Init(AStream: PStream; AFileName: String);
 Begin
   Fl := AStream;
   if  (AFileName = '') and (Fl = nil) then
     Exit;
-  {$I-}
   MustDisposeStream:=Fl = nil;
   if Fl = nil then
   Begin
-  {$Ifdef fpc}
+  {$Ifdef Uses_FViewer}
     Fl := New(PHandleDosStream, Init(AFileName, stOpenRead, fmOpenRead or fmShareCompat))
   {$else}
     Fl:=New(PDosStream, Init(AFileName, stOpenRead))
   {$endif}
   End
   else if Fl^.Status = stOK then
-
-  {$I+}
 End;
 
 Procedure TBasFile.WriteBASFile(NewFileName:String);
@@ -67,7 +77,7 @@ Begin
   Nor:=0;
   Size:=Fl^.GetSize;
   Fl^.Seek(0);
-  {$ifdef fpc}
+  {$ifdef Uses_FViewer}
   BASStream:= New(PHandleDosStream, init(NewFileName, stCreate, fmOpenWrite or fmShareDenyWrite));
   {$else}
   BASStream:=New(PDosStream, Init(NewFileName, stCreate));

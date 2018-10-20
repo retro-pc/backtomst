@@ -45,6 +45,8 @@ const
 
   cmMountKDI      = 194;
 
+  cmSelectDrive   = 195;
+
 type
   TSortMode = (psmName, psmExt, psmSize,  psmUnsorted);
 

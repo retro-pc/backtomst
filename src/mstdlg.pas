@@ -8,7 +8,7 @@
 {************************************************}
 
 {$ifdef fpc}
-{$A1}
+{$A1, H-}
 {$endif}
 
 Unit MstDlg;
@@ -130,7 +130,7 @@ end;
 {---------------------------------------------------------}
 procedure TMSTFileList.SetData(var Rec);
 begin
-    ReadDir;
+  ReadDir;
 end;
 {---------------------------------------------------------}
 Function TMSTFileList.ReadDir:Boolean;
@@ -423,6 +423,21 @@ begin
         End;
       End;
     End;
+  evMouseDown:
+    If (Event.Buttons = mbRightButton) Then
+    Begin
+       inherited HandleEvent(Event);
+       Begin
+         If List^.Count > 0 Then
+         Begin
+           P := PMSTSearchRec(@P);
+           P := List^.At(Focused);
+           P^.Selected:=not P^.Selected;
+           Draw;
+         End;
+       End;
+       ClearEvent(Event);
+    End;
   evBroadCast:
     Case Event.Command of
       cmListItemSelected:
@@ -433,7 +448,10 @@ begin
             P := List^.At(Focused);
             P^.Selected:=not P^.Selected;
             If List^.Count - 1 > Focused Then
+            Begin
               Inc(Focused);
+              FocusItem(Focused);
+            End;
             Draw;
           End;
         End;
@@ -689,12 +707,19 @@ begin
 
            While (I <= (SizeOf(TCatalog) div SizeOf(TEntry)) - 1) do
            begin
-
+             {
              Catalog[I].Ext[0]:=Char(Byte(Catalog[I].Ext[0]) And $7F);
              Catalog[I].Ext[1]:=Char(Byte(Catalog[I].Ext[1]) And $7F);
              Catalog[I].Ext[2]:=Char(Byte(Catalog[I].Ext[2]) And $7F);
 
              If ((Catalog[I].Name = P^.FName) and (Catalog[I].Ext = P^.FExt) and (Catalog[I].User = P^.User)) Then
+               Catalog[I].User:=$E5;
+             }
+             If ((Catalog[I].Name = P^.FName) and
+                 (Byte(Catalog[I].Ext[0]) and $7F = Byte(P^.FExt[0])) and
+                 (Byte(Catalog[I].Ext[1]) and $7F = Byte(P^.FExt[1])) and
+                 (Byte(Catalog[I].Ext[2]) and $7F = Byte(P^.FExt[2])) and
+                 (Catalog[I].User = P^.User)) Then
                Catalog[I].User:=$E5;
              I:=I+1;
            end;
@@ -731,12 +756,19 @@ begin
 
     While (I <= (SizeOf(TCatalog) div SizeOf(TEntry)) - 1) do
     begin
-
+      {
       Catalog[I].Ext[0]:=Char(Byte(Catalog[I].Ext[0]) And $7F);
       Catalog[I].Ext[1]:=Char(Byte(Catalog[I].Ext[1]) And $7F);
       Catalog[I].Ext[2]:=Char(Byte(Catalog[I].Ext[2]) And $7F);
 
       If ((Catalog[I].Name = P^.FName) and (Catalog[I].Ext = P^.FExt) and (Catalog[I].User = P^.User)) Then
+        Catalog[I].User:=$E5;
+      }
+      If ((Catalog[I].Name = P^.FName) and
+          (Byte(Catalog[I].Ext[0]) and $7F = Byte(P^.FExt[0])) and
+          (Byte(Catalog[I].Ext[1]) and $7F = Byte(P^.FExt[1])) and
+          (Byte(Catalog[I].Ext[2]) and $7F = Byte(P^.FExt[2])) and
+          (Catalog[I].User = P^.User)) Then
         Catalog[I].User:=$E5;
       I:=I+1;
     end;
@@ -751,7 +783,7 @@ end;
 Procedure TMSTShortWindow.SaveFileAs(FileName:ShortString; P:Pointer);
 Var
   Catalog:TCatalog;
-  _F:File;
+  _F:PStream;
   I,J:Word;
 
   pcat:PEntryCollection;
@@ -786,8 +818,13 @@ begin
   Lb^.GetData(P);
 }
 
-  Assign(_F, FileName);
-  ReWrite(_F,1);
+  _F:=New(PBufStream, Init(FileName, stCreate, SizeOf(Buf)));
+  If _F^.ErrorInfo <> stOk Then
+  Begin
+    MessageBox('Can''t create file: '#13 + FileName, nil, mfError or mfOKButton);
+    Dispose(_F, Done);
+    Exit;
+  End;
 
   I:=0;
 
@@ -826,9 +863,9 @@ begin
         Else
           PMicroDOSDisk(MSTDisk)^.ReadBlock(Entry^.FatB[J], @buf);
         If FileSize >= SizeOf(Buf) Then
-          BlockWrite(_F, buf, SizeOf(Buf))
+          _F^.Write(Buf, SizeOf(Buf))
         else
-          BlockWrite(_F, buf, FileSize);
+          _F^.Write(Buf, FileSize);
         FileSize:=FileSize - SizeOf(Buf);
         J:=J+1;
       end;
@@ -836,7 +873,7 @@ begin
   end;
   pcat^.DeleteAll;
   Dispose(pcat, Done);
-  System.Close(_F);
+  Dispose(_F, Done);
 end;
 {---------------------------------------------------------}
 Procedure TMSTShortWindow.SaveFile;
@@ -959,7 +996,7 @@ Var
   Catalog:TCatalog;
   I,J:Word;
   FreeVec:Word;
-  F:File;
+  F:PStream;
   FileSize:LongInt;
   buf:Array[0..1024 * 2 - 1] Of Byte;
 
@@ -970,6 +1007,9 @@ Var
   Rslt:Word;
 {  S:String; }
   FileExt:String;
+{$ifndef fpc}
+  _FileName:String;
+{$endif}
   FreeFatRecs:Word;
 begin
 
@@ -1006,6 +1046,17 @@ begin
     Exit;
   End;
   {$else}
+  _FileName:=LeftStr(Service.ExtractFileName(FileName) + '        ', 8);
+  FileExt:=LeftStr(Service.ExtractFileExt(FileName) + '    ', 4);
+  If Self.FileExists( _FileName + FileExt, 0) Then
+  Begin
+    MessageBox('File'#13 + LeftStr(Service.ExtractFileName(FileName), 8) +
+               Service.ExtractFileExt(FileName) +
+               #13'for user 0 exist, can''t add file', Nil, mfError +
+      mfOKButton);
+    Exit;
+  End;
+
   { TODO BP }
   {$endif}
 
@@ -1045,22 +1096,21 @@ begin
     Inc(I);
   end;
 
-  Assign(F, FileName);
-  {$I-}
-  Reset(F, 1);
-  FileSize:=System.FileSize(F);
-  System.Close(F);
-  {$I+}
-  If IOResult <> 0 Then
+  F:=New(PBufStream, Init(FileName, stOpenRead, SizeOf(Buf)));
+  If F^.ErrorInfo <> stOk Then
   Begin
     {$Ifdef fpc}
     FileName:=SysUtils.ExtractFileName(FileName);
     {$else}
     { TODO BP }
     {$endif}
-    MessageBox('Error open file: '#13 + FileName, nil, mfError or mfOKButton);
+    MessageBox('Can''t open file: '#13 + FileName, nil, mfError or mfOKButton);
+    Dispose(F, Done);
     Exit;
   End;
+
+  FileSize:=F^.GetSize;
+
   If (LongInt(FreeVec) * 2048 < FileSize) or (LongInt(FreeFatRecs) * 8 * 2048 < FileSize) Then
   Begin
     {$Ifdef fpc}
@@ -1074,7 +1124,7 @@ begin
 
 {  FileName:=ExtractFileName(FileName); }
 {  FileName:=UpperCase(FileName); }
-  Reset(F, 1);
+
   I:=0;
   J:=2;
   ExN:=0;
@@ -1099,6 +1149,16 @@ begin
             Catalog[I].Ext:=Copy(FileExt + '   ', 2, 3);
           {$else}
           { TODO BP }
+          _FileName:=LeftStr(Service.ExtractFileName(FileName) + '        ', 8);
+          move(_FileName[1], Catalog[I].Name, 8);
+          FileExt:=Service.ExtractFileExt(FileName);
+          If FileExt = '' Then
+            Catalog[I].Ext:='   '
+          else
+            Begin
+              FileExt:=Copy(FileExt + '   ', 2, 3);
+              move(FileExt[1], Catalog[I].Ext, 3);
+            End;
           {$endif}
           Catalog[I].Exn:=(Exn and $1F);
           Catalog[I].Re1:=(Exn shr $5);
@@ -1110,9 +1170,9 @@ begin
       End;
 
     If FileSize >= SizeOf(Buf) Then
-      BlockRead(F, Buf, SizeOf(Buf))
+      F^.Read(Buf, SizeOf(Buf))
     else
-      BlockRead(F, Buf, FileSize);
+      F^.Read(Buf, FileSize);
 
     Errc:=$FF;
     While Errc <> 0 do
@@ -1130,7 +1190,7 @@ begin
       End
       else
       Begin
-        System.Close(F);
+        Dispose(F, Done);
         MessageBox('Not enough free space for file: '#13 + FileName, nil, mfError or mfOKButton);
         Exit;
       End;
@@ -1150,7 +1210,7 @@ begin
 
     FileSize:=FileSize - SizeOf(Buf);
   end;
-  System.Close(F);
+  Dispose(F, Done);
 
   MSTDisk^.WriteDir(Catalog);
   Lb^.ReadDir;
@@ -1222,12 +1282,14 @@ begin
         {$ifdef fpc}
         If SysUtils.FileExists(FileName) Then
         {$else}
-        { TODO BP }
+        If Service.FileExists(FileName) Then
         {$endif}
         Begin
           D^.SetCurrentText('Copy file ' + FileNames[0]);
           Inc(Counter);
           GV1^.Update(Counter);
+          if isCancel(D) Then
+            Break;
           Message(Application, evBroadCast, cmCopyFileMST, @FileNames);
         End;
         P^.Selected:=False;
@@ -1262,7 +1324,7 @@ begin
     {$ifdef fpc}
     If SysUtils.FileExists(FileName) Then
     {$else}
-    { TODO BP }
+    If Service.FileExists(FileName) Then
     {$endif}
     begin
 {      Message(Application, evCommand, cmCopyFileMST, @FileNames); }
@@ -1346,6 +1408,7 @@ begin
   else
     Compare := 0;
   end;
+
 end;
 
 procedure TCPMFileCollection.FreeItem(Item: Pointer);
