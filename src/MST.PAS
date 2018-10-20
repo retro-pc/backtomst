@@ -29,6 +29,12 @@ Uses App, Objects, Views, Menus, Drivers, Dialogs, Stddlg,
 {$endif}
 ;
 
+{.$define linktime}
+
+{$ifdef linktime}
+{$I LinkDate.inc}
+{$endif}
+
 Type
   PMSTApplication = ^TMSTApplication;
   TMSTApplication = Object(TApplication)
@@ -59,9 +65,13 @@ Type
 
 Procedure TMSTApplication.DoAboutBox;
 Begin
-  MessageBox(#3'Программа работы с дисками'#13#3'МикроДос версия 1.0'#13 +
-    #3'Copyright (C) 2013-2014'#13#3'Маринов Георгий aka MarinovSoft',
-    Nil, mfInformation Or mfOKButton);
+  MessageBox(#3'Программа работы с дисками'#13#3'CP/M версия 1.0'
+  {$ifdef linktime}
+  + ' (' + linkdate + ')'
+  {$endif}
+    + #13 +
+    #3'Copyright (C) 2013-2014'#13#3'Маринов Георгий aka MarinovSoft'
+  , Nil, mfInformation Or mfOKButton);
 End;
 
 Procedure TMSTApplication.InitMenuBar;
@@ -157,11 +167,15 @@ Begin
         ListDisk;
         ClearEvent(Event);
       End;
-      cmCopyFileDOS:
+(*      cmCopyFileDOS:
       begin
          Message(LeftWindow, evCommand, cmCopyFileDOS, Event.InfoPtr);
          // ClearEvent(Event);
       end;
+      cmCopyFileMST:
+      begin
+         Message(RightWindow, evCommand, cmCopyFileMST, Event.InfoPtr);
+      end;*)
     End;
 
   End;
@@ -233,7 +247,7 @@ Begin
   For Frec.Track:=0 To (Frec.Tcount ShL 1)-1 Do
 }
   R.Assign( 2, 4, 38, 5 );
-  GV1 := New( PGrowView, Init( R, (Frec.Tcount ShL 1)-1 ));
+  GV1 := New( PGrowView, Init( R, (Frec.TCount ShL 1)-1 ));
 
   D:=New(PDiskProgressDialog, Init(GV1, ''));
   Desktop^.Insert(D);
@@ -289,20 +303,28 @@ Begin
       Inc(I);
       Catalog[I ShR 3].Recs:=(I And 7) ShL 4;
     end;
-  MSTDisk^.WriteDir(Catalog);
 
-  Dpb.Systrk:=Systrk;
-  Dpb.Dsize:=BlockCount-1;
-  Dpb.TCount:=Frec.Tcount;
-  Dpb.Crc:=$66;
-  For I:=0 To 30 Do
-    {$ifndef fpc}
-    Inc(Mem[Seg(Dpb):Ofs(Dpb)+31],Mem[Seg(Dpb):Ofs(Dpb)+I]);
-    {$else}
-    Inc(Dpb.Crc, PByteArray(@Dpb)^[I]);
-    {$endif}
-  FillChar(Buf,1024,$E5);
-  Move(Dpb,Buf,32);
+  With MSTDisk^ do
+  Begin
+
+    _Dpb:=Dpb;
+
+    _Dpb.Systrk:=Systrk;
+
+    MSTDisk^.WriteDir(Catalog);
+
+    _Dpb.Dsize:=BlockCount-1;
+    _Dpb.TCount:=Frec.TCount;
+    _Dpb.Crc:=$66;
+    For I:=0 To 30 Do
+      {$ifndef fpc}
+      Inc(Mem[Seg(_Dpb):Ofs(_Dpb)+31],Mem[Seg(_Dpb):Ofs(_Dpb)+I]);
+      {$else}
+      Inc(_Dpb.Crc, PByteArray(@_Dpb)^[I]);
+      {$endif}
+    FillChar(Buf, 1024, $E5);
+    Move(_Dpb, Buf, 32);
+  End;
   Frec.Sect:=1;
   Frec.Track:=0;
   Errc:=MSTDisk^.WriteSect(Frec,Buf);

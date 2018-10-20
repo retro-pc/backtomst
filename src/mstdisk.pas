@@ -105,6 +105,8 @@ const
 Type
   PMSTDisk = ^TMSTDisk;
   TMSTDisk = Object
+    _Dpb:TDpb;
+    _Frec:TFormRec;
     Constructor Init;
     Destructor Done;virtual;
     Function FormatTrack(Frec:TFormRec):Word;Virtual;  {$Ifdef UseAbstract} Abstract; {$endif}   { Форматирование трека, с параметрами определюсь позже }
@@ -129,8 +131,6 @@ Type
   private
     DiskName:Char;
     DiskAddr:Word;
-    _Frec:TFormRec;
-    _Dpb:TDpb;
     {$ifdef fpc}
     {$ifdef win32}
     hMST:THandle;

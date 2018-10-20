@@ -13,6 +13,9 @@ Uses SysUtils, Stddlg, Objects, Views, Drivers, Dialogs, Dos;
 {---------------------------------------------------------}
 
 Type
+  TFileNames = Array[0..1] Of ShortString;
+
+Type
   PDOSFileList = ^TDOSFileList;
   TDOSFileList = Object(TFileList)
     Procedure Draw; Virtual;
@@ -42,6 +45,7 @@ Type
     Procedure ChangeDir; virtual;
     Procedure ViewFile; virtual;
     Procedure CopyFile; virtual;
+    Procedure AddFile(FileNames:TFileNames); virtual;
   End;
   {---------------------------------------------------------}
 Type
@@ -521,6 +525,8 @@ Begin
 End;
 {---------------------------------------------------------}
 Procedure TDOSShortWindow.HandleEvent(Var Event:TEvent);
+Var
+  FileNames:^TFileNames;
 Begin
   Case Event.What Of
     evKeyDown:
@@ -545,7 +551,22 @@ Begin
         begin
           ClearEvent(Event);
         end;
+(*        cmCopyFileMST:
+        begin
+          FileNames:=Event.InfoPtr;
+          AddFile(FileNames^);
+          ClearEvent(Event);
+        End;*)
     end;
+    evBroadCast:
+      Case Event.Command Of
+        cmCopyFileMST:
+        begin
+          FileNames:=Event.InfoPtr;
+          AddFile(FileNames^);
+          ClearEvent(Event);
+        End;
+      End;
   End;
   Inherited HandleEvent(Event);
 End;
@@ -566,9 +587,48 @@ begin
   If P^.Attr and Directory = 0 Then
     If FileExists(FileName) Then
     begin
-      Message(Application, evCommand, cmCopyFileDOS, @FileName);
+//      Message(Application, evCommand, cmCopyFileDOS, @FileName);
+      Message(Application, evBroadCast, cmCopyFileDOS, @FileName);
     end;
-end;   
+end;
+{---------------------------------------------------------}
+procedure TDOSShortWindow.AddFile(FileNames:TFileNames);
+Var
+  FileName:String;
+  Rslt:Word;
+begin
+//  MessageBox(FileNames[0], nil, 0);
+//  MessageBox(FileNames[1], nil, 0);
+
+  FileName:= CurDir;
+
+  While FileName[Length(FileName)] = '\' do
+    FileName:=LeftStr(FileName, Length(FileName) - 1);
+  FileName:=FileName + '\' + FileNames[0];
+
+  If FileExists(FileName) Then
+  begin
+    If (FileGetAttr(FileName) and faDirectory) <> 0 Then
+    begin
+      MessageBox('Directory ' + FileNames[0] + ' exist, can''t erase!', nil, mfError or mfOKButton);
+      Exit;
+    end
+    else
+    begin
+      if StdDlg.ReplaceFile(FileName) Then
+        If Not SysUtils.DeleteFile(FileName) Then
+        Begin
+          MessageBox('Can''t erase file'#13 + FileNames[0], nil, mfError or mfOKButton);
+          Exit;
+        End;
+    end;
+  End;
+  If (not RenameFile(FileNames[1], FileName)) Then
+    MessageBox('Can''t rename file'#13 + FileNames[1] + #13'to'#13 + FileName, nil, mfError or mfOKButton)
+  else
+    mFileList^.ReadDirectory(CurDir + CurMask);
+//  Dispose(FileNames, Done);
+end;
 {---------------------------------------------------------}
 Constructor TDOSLongWindow.Init(Dir, Mask:String);
 Var

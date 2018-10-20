@@ -46,7 +46,7 @@ Type
   PMSTShortWindow = ^TMSTShortWindow;
   TMSTShortWindow = Object(TDialog)
   Public
-    Curdir:String;
+    CurDir:String;
     Msk:String;
     Lb:PMSTFileList;
     MSTDisk:PMSTDisk;
@@ -55,10 +55,12 @@ Type
     Destructor Done;Virtual;
     Procedure HandleEvent(Var Event:TEvent);Virtual;
     Procedure SaveFile;virtual;
-    Procedure SaveFileAs(FileName:String);virtual;
-    Procedure AddFile(FileName:String);virtual;
+    Procedure SaveFileAs(FileName:ShortString);virtual;
+    Procedure AddFile(FileName:ShortString);virtual;
     Procedure ViewFile;virtual;
     Procedure DeleteFile;Virtual;
+    Procedure CopyFile;Virtual;
+    Function FileExists(FileName:ShortString; User:Byte):Boolean;virtual;
   End;
   {---------------------------------------------------------}
 
@@ -87,7 +89,7 @@ Type
 
 Implementation
 
-Uses App, Dos, Memory, MstConst, FViewer;
+Uses App, Dos, MstConst, FViewer;
 
 
 type
@@ -363,11 +365,13 @@ Begin
   Case Event.What Of
     evCommand:
     Case Event.Command Of
+(*
       cmSave:
       Begin
         SaveFile;
         ClearEvent(Event);
       End;
+*)
       cmOpen:
       Begin
         ViewFile;
@@ -384,7 +388,18 @@ Begin
         ClearEvent(Event);
       end;
     End;
-    
+    evKeyDown:
+    Case Event.KeyCode of
+      kbF5: CopyFile;
+    End;
+    evBroadCast:
+    Case Event.Command Of
+      cmCopyFileDOS:
+      begin
+        AddFile(String(Event.InfoPtr^));
+        ClearEvent(Event);
+      end;
+    End;
 {    evKeyDown:
     Case Event.Keycode Of
       kbF4:
@@ -431,7 +446,7 @@ begin
   Lb^.ReadDir;
 end;
 {---------------------------------------------------------}
-Procedure TMSTShortWindow.SaveFileAs(FileName:String);
+Procedure TMSTShortWindow.SaveFileAs(FileName:ShortString);
 Var
   Catalog:TCatalog;
   _F:File;
@@ -497,7 +512,7 @@ end;
 Procedure TMSTShortWindow.SaveFile;
 Var
   P:PMSTSearchRec;
-  FileName:String;
+  FileName:ShortString;
   w:Word;
 Const
   IllegalChars:set of char = ['*',':','?','<','>','|','"','/','\'];
@@ -521,10 +536,10 @@ end;
 {---------------------------------------------------------}
 Procedure TMSTShortWindow.ViewFile;
 Var
-  FileName:String;
+  FileName:ShortString;
   H: PFileWindow;
   R: TRect;
-  P:PMSTSearchRec;
+  P: PMSTSearchRec;
 begin
 
   P := PMSTSearchRec(@P);
@@ -533,7 +548,7 @@ begin
 
   FileName:=GetTempFileName;
   SaveFileAs(FileName);
-  If FileExists(FileName) Then
+  If SysUtils.FileExists(FileName) Then
   begin
 {     R.Assign(0,0,72,15);  }
 {     Desktop^.GetExtent(R);}
@@ -558,7 +573,7 @@ begin
 end;
 *)
 {---------------------------------------------------------}
-Procedure TMSTShortWindow.AddFile(FileName:String);
+Procedure TMSTShortWindow.AddFile(FileName:ShortString);
 Var
   Catalog:TCatalog;
   I,J:Word;
@@ -573,11 +588,20 @@ Var
   Errc:Byte;
 begin
   // FileName:='C:\UTIL\FPC\SAVE\MST.NEW\TV\fdrawcmd.ppu';
-  
+
   MSTDisk^.ReadDir(Catalog);
 
   { TODO: Добавить проверку на наличие места в каталоге   }
-  { TODO: Добавить проверку на то что файл уже существует } 
+  { TODO: Добавить проверку на то что файл уже существует }
+
+  FileName:=UpperCase(FileName);
+
+  If Self.FileExists(ExtractFileName(FileName) + ExtractFileExt(FileName), 0) Then
+  Begin
+    MessageBox('File'#13 + ExtractFileName(FileName) + ExtractFileExt(FileName) + #13'for user 0 exist, can''t add file', Nil, mfError +
+      mfOKButton);
+    Exit;
+  End;
 
   { Не совсем верный подсчет количества незанятых экстентов }
   { Должен ли драйвер ФС обнулять незанятые записи FAT ???  }
@@ -622,7 +646,7 @@ begin
   End;
 
   //FileName:=ExtractFileName(FileName);
-  FileName:=UpperCase(FileName);
+  //FileName:=UpperCase(FileName);
   Reset(F, 1);
   I:=0;
   J:=2;
@@ -631,9 +655,9 @@ begin
   while (FileSize > 0) Do
   begin
     FillChar(Buf, SizeOf(Buf), 0);
-          
+
     If FatRec = 0 Then
-      While (I <= (SizeOf(TCatalog) div SizeOf(TEntry)) - 1) do
+      While (I < (SizeOf(TCatalog) div SizeOf(TEntry)) - 1) do
       begin
         if Catalog[I].User = $E5 Then
         begin
@@ -652,17 +676,17 @@ begin
  {
     While Frm_Vec[J]=1 do
       Inc(J);
-      
+
     Catalog[I].Fat[FatRec]:=J;
     Frm_Vec[J]:=1;
-    
+
     If FileSize >= SizeOf(Buf) Then
       BlockRead(F, Buf, SizeOf(Buf))
     else
       BlockRead(F, Buf, FileSize);
-      
+
     Errc:=PMicroDOSDisk(MSTDisk)^.WriteBlock(J, @buf);
-    
+
     If Errc <> 0 Then
     begin
     end;
@@ -671,7 +695,7 @@ begin
       BlockRead(F, Buf, SizeOf(Buf))
     else
       BlockRead(F, Buf, FileSize);
-      
+
     Errc:=$FF;
     While Errc <> 0 do
     begin
@@ -689,11 +713,11 @@ begin
         Exit;
       End;
     end;
-    
+
     Inc(FatRec);
     If FatRec = 8 Then
       FatRec:=0;
-      
+
     If FileSize >= SizeOf(Buf) Then
       Inc(Catalog[I].Recs, $10)
     Else
@@ -701,7 +725,7 @@ begin
         Inc(Catalog[I].Recs, (FileSize shr $7))
       Else
         Inc(Catalog[I].Recs, (FileSize shr $7) + 1);
-      
+
     FileSize:=FileSize - SizeOf(Buf);
   end;
   System.Close(F);
@@ -711,7 +735,66 @@ begin
 
 end;
 {---------------------------------------------------------}
+Procedure TMSTShortWindow.CopyFile;
+Var
+  FileName:ShortString;
+  P:PMSTSearchRec;
+  W:Word;
+  FileNames:Array[0..1] Of ShortString;
+Const
+  IllegalChars:set of char = ['*',':','?','<','>','|','"','/','\'];
+begin
 
+  P := PMSTSearchRec(@P);
+
+  Lb^.GetData(P);
+
+  FileName:=Trim(P^.FName) + '.' + Trim(P^.FExt);
+
+  for w:=1 to Length(FileName) do
+    if FileName[w] in IllegalChars Then FileName[w]:='_';
+  FileNames[0]:=FileName;
+
+  FileName:=GetTempFileName;
+  FileNames[1]:=FileName;
+
+  SaveFileAs(FileName);
+  If SysUtils.FileExists(FileName) Then
+  begin
+//    Message(Application, evCommand, cmCopyFileMST, @FileNames);
+    Message(Application, evBroadCast, cmCopyFileMST, @FileNames);
+  end;
+
+end;
+{---------------------------------------------------------}
+Function TMSTShortWindow.FileExists(FileName: ShortString; User: Byte):Boolean;
+Var
+  Catalog:TCatalog;
+  I:Word;
+begin
+  MSTDisk^.ReadDir(Catalog);
+
+  I:=0;
+
+  While (I <= (SizeOf(TCatalog) div SizeOf(TEntry)) - 1) do
+  begin
+
+    Catalog[I].Ext[0]:=Char(Byte(Catalog[I].Ext[0]) And $7F);
+    Catalog[I].Ext[1]:=Char(Byte(Catalog[I].Ext[1]) And $7F);
+    Catalog[I].Ext[2]:=Char(Byte(Catalog[I].Ext[2]) And $7F);
+    If (Catalog[I].User = User) and ((Trim(Catalog[I].Name) + '.' + Trim(Catalog[I].Ext)) = FileName) Then
+    Begin
+      FileExists:=True;
+      Exit;
+    End;
+
+    I:=I+1;
+  end;
+
+  FileExists:=False;
+
+End;
+{---------------------------------------------------------}
 { TMSTFileCollection }
 {$ifdef fpc}
 function TCPMFileCollection.Compare(Key1, Key2: Pointer): LongInt;
