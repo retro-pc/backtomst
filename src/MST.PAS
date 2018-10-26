@@ -25,7 +25,7 @@
 {$define debug}
 {$endif}
 
-Uses App, Objects, Views, Menus, Drivers, Stddlg, Dialogs,
+Uses App, Objects, Views, Menus, Drivers, Stddlg,
   Msgbox, GrowView, AppWin, Mstconst, MSTDisk, AppWinEx, MstDlg, DosDlg, FV_Const {$ifdef debug}, GadGets {$endif}
 {$ifdef fpc}
 {$ifndef win32}

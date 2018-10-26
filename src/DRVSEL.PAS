@@ -2,7 +2,7 @@ unit DrvSel;
 
 interface
 
-Uses {$ifdef win32} Windows, {$endif} Objects, Dialogs, Drivers, Views, StdDlg;
+Uses {$ifdef fpc}{$ifdef win32} Windows, {$endif} {$endif } Objects, Dialogs, Drivers, Views, StdDlg;
 
 Type
   PDriveSelectDialog = ^TDriveSelectDialog;
@@ -32,10 +32,52 @@ Type
 
 implementation
 
-Uses App, MSTConst;
+Uses App, MSTConst {$ifdef fpc} {$ifndef win32} , Go32 {$endif} {$endif};
 
 type
   TDriveSet   = Set of 'A'..'Z';
+
+{$ifdef fpc}
+{$ifndef win32}
+Function DriveValid (Drive : Char) : Boolean;
+Var
+  Regs:TRealRegs;
+Var
+  Buffer : Array [0..2]   Of Byte;
+  Fcb    : Array [0..$0F] Of Byte;
+  dosBuffer : LongInt;
+  dosFCB    : LongInt;
+  Res       : Byte;
+Begin
+
+  dosFCB:=global_dos_alloc(SizeOf(FCB));
+
+  Buffer[0]:=Byte(Drive);
+  Buffer[1]:=Byte(':');
+  Buffer[2]:=0;
+
+  dosBuffer:=global_dos_alloc(SizeOf(Buffer));
+
+  dosmemput(Word(dosBuffer shr 16), Word(dosBuffer), Buffer, sizeof(Buffer));
+
+  Regs.DS:=Word(dosBuffer shr 16);
+  Regs.SI:=Word(dosBuffer);
+
+  Regs.ES:=word(dosFCB shr 16);
+  Regs.DI:=word(dosFCB);
+
+  Regs.AX:=$2900;
+
+  RealIntr($21, Regs);
+
+  global_dos_free(dosBuffer);
+  global_dos_free(dosFCB);
+
+  Exit(Regs.AL <> $FF);
+
+End;
+{$endif}
+{$endif}
 
 procedure GetValidDrives( var Drives : TDriveSet);
 var
@@ -43,11 +85,17 @@ var
   DrivesWord : Longint absolute _Drives;
   Ch:Char;
 begin
+  {$ifdef fpc}
   {$ifdef win32}
   DrivesWord := GetlogicalDrives;
   For Ch:='A' to 'Z' do
-    If Byte(Ch) - Byte('A') in _Drives
-      Then Include(Drives, Ch);
+    If Byte(Ch) - Byte('A') in _Drives Then
+      Include(Drives, Ch);
+  {$else}
+  For Ch:='A' to 'Z' do
+    If DriveValid(Ch) Then
+      Include(Drives, Ch);     
+  {$endif}
   {$endif}
 end;
 

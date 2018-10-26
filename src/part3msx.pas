@@ -5,7 +5,7 @@
 {$endif}
 
 {$ifdef fpc}
-{.$define Uses_FViewer}
+{$define Uses_FViewer}
 {$endif}
 
 Unit Part3Msx;
