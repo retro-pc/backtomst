@@ -1,6 +1,6 @@
 {************************************************}
 {                                                }
-{  Copyright (C) MarinovSoft 2013-2018           }
+{  Copyright (C) MarinovSoft 2013-2019           }
 {                                                }
 {  http://marinovsoft.narod.ru                   }
 {  mailto:super386@rambler.ru                    }
@@ -16,6 +16,7 @@ which has 80 tracks.
 *)
 
 {$R-}
+
 {$ifdef fpc}
 {$A1}
 {$endif}
@@ -34,7 +35,9 @@ Interface
 {$ifdef win32}
 Uses fdrawcmd;
 {$else}
+{$ifndef unix}
 Uses go32;
+{$endif}
 {$endif}
 {$endif}
 
@@ -106,11 +109,6 @@ Type
     Systrk: Word;             { }
     Crc   : Byte;
   End;
-
-const
-  systrk : word = 2;
-{  BlockCount : Word = 390;}
-  BlockCount : Word = 394;
 
 {$ifndef fpc}
 Type
@@ -216,7 +214,6 @@ Const
     Lp1   : 4;             { 4 }
     Lp2   : 15;            { 15 }
     Lp3   : 0;             { 0 }
-(*    Dsize : 391;           { blocks - 1 }*)
     Dsize : 394;
     Root  : 127;           { 127 }
     Al0   : 192;           { 192 }
@@ -330,6 +327,7 @@ Begin
   rwp.gap:=    $0a;
   rwp.datalen:= $ff;
   {$else}
+  {$ifndef unix}
   Case DiskName Of
     'A': begin DiskAddr:=$490; { outportb($3F7, (inportb($3F7) and $FE));} end;
     'B': begin DiskAddr:=$491; { outportb($377, (inportb($377) and $FE));} end;
@@ -343,6 +341,7 @@ Begin
   Mem[MemW[0:$7A]:MemW[0:$78]+8]:=$E5;
   MediaStateOld:=Mem[0:DiskAddr];
   {$endif}
+  {$endif}
   _Frec:=Frec;
   ResetDisk;
   Inherited Init;
@@ -350,6 +349,7 @@ End;
 
 Destructor TMicroDOSDisk.Done;
 {$ifndef win32}
+{$ifndef unix}
 Var
   B:Byte;
   {$ifdef fpc}
@@ -360,8 +360,10 @@ Var
   // повзоляет ее обойти
   {$endif}
 {$endif}
+{$endif}
 begin
   {$ifndef win32}
+  {$ifndef unix}
   For B:=0 To $0A Do
   Begin
   {$ifdef fpc}
@@ -376,6 +378,7 @@ begin
   Mem[0:DiskAddr]:=B1;
   {$else}
   Mem[0:DiskAddr]:=MediaStateOld;
+  {$endif}
   {$endif}
   {$endif}
   Inherited Done;
@@ -393,8 +396,10 @@ Var
   _Flag     :BOOL;
   dwRet     :LongWord;
 {$else}
+{$ifndef unix}
 Var
   Regs:TRealRegs;
+{$endif}
 {$endif}
 {$endif}
 begin
@@ -417,12 +422,14 @@ end;
 
 Procedure TMicroDOSDisk.ResetDisk;
 {$ifndef win32}
+{$ifndef unix}
 Var
 {$ifdef fpc}
   R:TrealRegs;
   B:Byte;
 {$endif}
   Disk:Byte;
+{$endif}
 {$endif}
 Begin
 {$ifndef fpc}
@@ -438,6 +445,7 @@ Begin
   End;
 {$else}
 {$ifndef win32}
+{$ifndef unix}
   Disk:= DiskAddr - $490;
   R.dl:= Disk;
   R.ah:= 0;
@@ -448,7 +456,7 @@ Begin
     2:Mem[0:DiskAddr]:=$94; { FD_RATE_250K }
   End;
 //  dpmi_dosmemput(0, DiskAddr, B, 1);
-
+{$endif}
 {$else}
 
 {$endif}
@@ -465,10 +473,12 @@ Var
   _Flag     :BOOL;
   ph        :PFD_ID_HEADER;
 {$else}
+{$ifndef unix}
   Block : Array[1..128,0..3] Of Byte;
   R     : TRealRegs;
   S,Err : Byte;
   Disk  : Byte;
+{$endif}
 {$endif}
 {$else}
   Block : Array[1..128,0..3] Of Byte;
@@ -552,6 +562,7 @@ Begin
   else
     FormatTrack:=0;
   {$else}
+  {$ifndef unix}
   { 0=500Kbps (HD), 1=300Kbps (DD 5.25"), 2=250Kbps (DD 3.5"), 3=1Mbps (ED) }
   case DataRate Of
     1:Mem[0:DiskAddr]:=$54; { FD_RATE_300K }
@@ -592,6 +603,7 @@ Begin
 
   {$endif}
   {$endif}
+  {$endif}
 End;
 
 Function TMicroDOSDisk.ReadSect(Frec:TFormRec;Var Buf:TBufType):Word;
@@ -601,10 +613,14 @@ Var
   _Flag:BOOL;
   dwRet:LongWord;
 {$else}
+{$ifdef unix}
+  _Flag:boolean;
+{$else}
   R:TRealRegs;
   Disk: Byte;
   Err: Byte;
   B  : Byte;
+{$endif}
 {$endif}
 {$else}
   _Flag:Byte;
@@ -672,6 +688,7 @@ Begin
   Else
     ReadSect:=0;
   {$else}
+  {$ifndef unix}
   { 0=500Kbps (HD), 1=300Kbps (DD 5.25"), 2=250Kbps (DD 3.5"), 3=1Mbps (ED) }
   case DataRate Of
     1:Mem[0:DiskAddr]:=$54; { FD_RATE_300K }
@@ -701,7 +718,7 @@ Begin
   Exit;
   {$endif}
   {$endif}
-
+  {$endif}
 End;
 
 Function TMicroDOSDisk.WriteSect(Frec:TFormRec;Var Buf:TBufType):Word;
@@ -711,10 +728,14 @@ Var
   _Flag:BOOL;
   dwRet:LongWord;
 {$else}
+{$ifdef unix}
+  _Flag:Boolean;
+{$else}
   R:TRealRegs;
   Err           : Byte;
   Disk          : Byte;
   B             : Byte;
+{$endif}
 {$endif}
 {$else}
   _Flag         : Byte;
@@ -787,6 +808,7 @@ Begin
   Else
     WriteSect:=0;
   {$else}
+  {$ifndef unix}
   { 0=500Kbps (HD), 1=300Kbps (DD 5.25"), 2=250Kbps (DD 3.5"), 3=1Mbps (ED) }
   case DataRate Of
     1:Mem[0:DiskAddr]:=$54; { FD_RATE_300K }
@@ -813,7 +835,7 @@ Begin
     Err:=0;
   WriteSect:=Err;
   Exit;
-
+  {$endif}
   {$endif}
   {$endif}
 End;
@@ -872,7 +894,6 @@ var
   Errc:Byte;
 begin
   Errc:=0;
-{  If BlockNumber > BlockCount Then }
   If BlockNumber > _Dpb.Dsize Then
     FillChar(_pblock(pointer(block))^, 2048, $00)
   Else
@@ -908,7 +929,6 @@ var
    Errc:Byte;
 begin
    Errc:=0;
-{   If BlockNumber > BlockCount Then }
    If BlockNumber > _Dpb.Dsize Then
    Else
    Begin

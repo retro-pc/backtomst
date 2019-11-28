@@ -322,7 +322,7 @@ begin
     begin
       isRootDir:=True;
       CurDirName:=CurDir;
-      While CurDirName[Length(CurDirName)] = '\' do
+      While CurDirName[Length(CurDirName)] = DirSeparator do
         CurDirName:=LeftStr(CurDirName, Length(CurDirName) - 1);
       CurDirExt:=ExtractFileExt(CurDirName);
       CurDirName:=ExtractFileName(CurDirName);
@@ -333,14 +333,14 @@ begin
 
     CurDir:=ExpandFileName(CurDir + p^.name);
 
-    While CurDir[Length(Curdir)] = '\' do
+    While CurDir[Length(Curdir)] = DirSeparator do
       {$ifdef fpc}
       CurDir:=LeftStr(CurDir, Length(CurDir) - 1);
       {$else}
       CurDir:=Copy(CurDir, 1, Length(CurDir) - 1);
       {$endif}
 
-    CurDir:=CurDir + '\';
+    CurDir:=CurDir + DirSeparator;
 
     If Length(CurDir) = 3 Then
       NewTitle:=TruncPathStr(CurDir, Size.X - 16)
@@ -504,13 +504,13 @@ begin
 
   FileName:= CurDir;
 
-  While FileName[Length(FileName)] = '\' do
+  While FileName[Length(FileName)] = DirSeparator do
     {$ifdef fpc}
     FileName:=LeftStr(FileName, Length(FileName) - 1);
     {$else}
     FileName:=Copy(FileName, 1, Length(FileName) - 1);
     {$endif}
-  FileName:=FileName + '\' + P^.Name;
+  FileName:=FileName + DirSeparator + P^.Name;
 
   If P^.Attr and Directory = 0 Then
     If FileExists(FileName) Then
@@ -543,13 +543,13 @@ begin
 
   FileName:= CurDir;
 
-  While FileName[Length(FileName)] = '\' do
+  While FileName[Length(FileName)] = DirSeparator do
     {$ifdef fpc}
     FileName:=LeftStr(FileName, Length(FileName) - 1);
     {$else}
     FileName:=Copy(FileName, 1, Length(FileName) - 1);
     {$endif}
-  FileName:=FileName + '\' + P^.Name;
+  FileName:=FileName + DirSeparator + P^.Name;
 
   If P^.Attr and Directory = 0 Then
     If FileExists(FileName) Then
@@ -619,14 +619,14 @@ Begin
     else
       CurDir:=S;
 
-    While CurDir[Length(Curdir)] = '\' do
+    While CurDir[Length(Curdir)] = DirSeparator do
       {$ifdef fpc}
       CurDir:=LeftStr(CurDir, Length(CurDir) - 1);
       {$else}
       CurDir:=Copy(CurDir, 1, Length(CurDir) - 1);
       {$endif}
 
-    CurDir:=CurDir + '\';
+    CurDir:=CurDir + DirSeparator;
 
     If Length(CurDir) = 3 Then
       NewTitle:=TruncPathStr(CurDir, Size.X - 16)
@@ -1012,7 +1012,7 @@ Begin
   mFileList:=New(PDOSLongFileList, Init(R, Nil));
   mFileList^.SetState(sfCursorVis, False);
   Insert(mFileList);
-  mFileList^.ReadDirectory(CurDir + '\' + CurMask);
+  mFileList^.ReadDirectory(CurDir + DirSeparator + CurMask);
 End;
 {---------------------------------------------------------}
 Destructor TDOSShortWindow.Done;
@@ -1117,7 +1117,7 @@ begin
   End;
 
   lCurDir:=CurDir;
-  While lCurDir[Length(lCurDir)] = '\' do
+  While lCurDir[Length(lCurDir)] = DirSeparator do
     {$ifdef fpc}
     lCurDir:=LeftStr(lCurDir, Length(lCurDir) - 1);
     {$else}
@@ -1136,7 +1136,7 @@ begin
       P := PDOSSearchRec(mFileList^.List^.At(Item));
       If P^.Selected Then
       Begin
-        FileName:=lCurDir + '\' + P^.Name;
+        FileName:=lCurDir + DirSeparator + P^.Name;
 
         If P^.Attr and Directory = 0 Then
           If FileExists(FileName) Then
@@ -1158,7 +1158,7 @@ begin
   Begin
     mFileList^.GetData(P);
 
-    FileName:=lCurDir + '\' + P^.Name;
+    FileName:=lCurDir + DirSeparator + P^.Name;
 
     If P^.Attr and Directory = 0 Then
       If FileExists(FileName) Then
@@ -1178,13 +1178,13 @@ begin
 
   FileName:= CurDir;
 
-  While FileName[Length(FileName)] = '\' do
+  While FileName[Length(FileName)] = DirSeparator do
     {$Ifdef fpc}
     FileName:=LeftStr(FileName, Length(FileName) - 1);
     {$else}
     FileName:=Copy(FileName, 1, Length(FileName) - 1);
     {$endif}
-  FileName:=FileName + '\' + FileNames[0];
+  FileName:=FileName + DirSeparator + FileNames[0];
 
   If FileExists(FileName) Then
   begin
@@ -1250,7 +1250,7 @@ Begin
   End;
 
   lCurDir:=CurDir;
-  While lCurDir[Length(lCurDir)] = '\' do
+  While lCurDir[Length(lCurDir)] = DirSeparator do
     {$ifdef fpc}
     lCurDir:=LeftStr(lCurDir, Length(lCurDir) - 1);
     {$else}
@@ -1269,7 +1269,7 @@ Begin
       P := PDOSSearchRec(mFileList^.List^.At(Item));
       If P^.Selected Then
       Begin
-        FileName:=lCurDir + '\' + P^.Name;
+        FileName:=lCurDir + DirSeparator + P^.Name;
 
         If P^.Attr and Directory = 0 Then
           If FileExists(FileName) Then
@@ -1300,7 +1300,7 @@ Begin
   Begin
     mFileList^.GetData(P);
 
-    FileName:=lCurDir + '\' + P^.Name;
+    FileName:=lCurDir + DirSeparator + P^.Name;
 
     If P^.Attr and Directory = 0 Then
       If FileExists(FileName) Then
@@ -1329,7 +1329,7 @@ Begin
   R.A.X:=R.B.X div 2;
   R.B.Y:=R.B.Y - 1;
 
-  While Dir[Length(Dir)] = '\' do
+  While Dir[Length(Dir)] = DirSeparator do
     {$Ifdef fpc}
     Dir:=LeftStr(Dir, Length(Dir) - 1);
     {$else}
@@ -1340,7 +1340,7 @@ Begin
 
 {  Palette:=wpCyanWindow; }
 
-  Dir:=Dir + '\';
+  Dir:=Dir + DirSeparator;
 
   FSplit(Dir, CurDir, name, ext);
 
@@ -1350,13 +1350,13 @@ Begin
   mFileList:=New(PDOSLongFileList, Init(R, Nil));
   mFileList^.SetState(sfCursorVis, False);
   Insert(mFileList);
-  While CurDir[Length(CurDir)] = '\' do
+  While CurDir[Length(CurDir)] = DirSeparator do
     {$ifdef fpc}
     CurDir:=LeftStr(CurDir, Length(CurDir) - 1);
     {$else}
     CurDir:=Copy(CurDir, 1, Length(CurDir) - 1);
     {$endif}
-  CurDir:=CurDir + '\';
+  CurDir:=CurDir + DirSeparator;
   mFileList^.ReadDirectory(CurDir + CurMask);
 End;
 

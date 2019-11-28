@@ -1,6 +1,6 @@
 {************************************************}
 {                                                }
-{  Copyright (C) MarinovSoft 2013-2018           }
+{  Copyright (C) MarinovSoft 2013-2019           }
 {                                                }
 {  http://marinovsoft.narod.ru                   }
 {  mailto:super386@rambler.ru                    }
@@ -112,6 +112,9 @@ type
 {    Time: Longint;}
     Size: Longint;
     Selected: Boolean;
+    isReadOnly:Boolean;
+    isSystemFile:Boolean;
+    isArchived:Boolean;
     case Integer of
       1:(Name: string[12]);
       2:(Res:Char;FName:Array[0..7] Of Char;Dot:Char;FExt:Array[0..2] Of Char);
@@ -266,6 +269,9 @@ begin
                                          + Char(Byte(Catalog[I].Ext[1]) And $7F)
                                          + Char(Byte(Catalog[I].Ext[2]) And $7F);
           S.User:= Catalog[I].User;
+          S.isReadOnly:=(Byte(Catalog[I].Ext[0]) And $80) <> 0;
+          S.isSystemFile:=(Byte(Catalog[I].Ext[1]) And $80) <> 0;
+          S.isArchived:=(Byte(Catalog[I].Ext[2]) And $80) <> 0;
           new(P);
           FillChar(P^,SizeOf(P^), 0);
           {$ifdef fpc}
@@ -275,6 +281,9 @@ begin
           {$endif}
           P^.User:=S.User;
           P^.Selected:=False;
+          P^.isReadOnly:=S.isReadOnly;
+          P^.isSystemFile:=S.isSystemFile;
+          P^.isArchived:=S.isArchived;
           FileList^.Insert(P);
         End;
     end;
@@ -357,6 +366,18 @@ begin
                         Chr(Byte(SR^.Ext[1]) And $7F) +
                         Chr(Byte(SR^.Ext[2]) And $7F) + '  ' + Format('%8d', [LongInt(SR^.Recs) * 128 + LongInt(SR^.Exn)]);}
   S:= SR^.Name + '  ' + Format('%8d', [SR^.Size]) + Format('%4d', [SR^.User]);
+  if SR^.isReadOnly Then
+    S:=S + ' R'
+  else
+    S:=S + '  ';
+  if SR^.isSystemFile Then
+    S:=S + ' S'
+  else
+    S:=S + '  ';
+  if SR^.isArchived Then
+    S:=S + ' A'
+  else
+    S:=S + '  ';
   {$else}
   SizeTxt:=IntToStr(SR^.Size);
   While Length(SizeTxt) < 8 do
@@ -1031,13 +1052,19 @@ begin
   { TODO: Добавить проверку на то что файл уже существует }
 
   {$ifdef fpc}
+  {$ifndef unix}
   FileName:=UpperCase(FileName);
+  {$endif}
   {$else}
   FileName:=strupr(FileName);
   {$endif}
 
   {$ifdef fpc}
+  {$ifdef unix}
+  If Self.FileExists(UpperCase(LeftStr(StdDlg.ExtractFileName(FileName), 8) + SysUtils.ExtractFileExt(FileName)), 0) Then
+  {$else}
   If Self.FileExists(LeftStr(StdDlg.ExtractFileName(FileName), 8) + SysUtils.ExtractFileExt(FileName), 0) Then
+  {$endif}
   Begin
     MessageBox('File'#13 + LeftStr(StdDlg.ExtractFileName(FileName), 8) +
                SysUtils.ExtractFileExt(FileName) +
@@ -1063,7 +1090,6 @@ begin
   { Не совсем верный подсчет количества незанятых экстентов }
   { Должен ли драйвер ФС обнулять незанятые записи FAT ???  }
   I:=0;
-{  FreeVec:=BlockCount - 2; }
   FreeVec:=(MSTDisk^._Dpb.DSize + 1) - 2;
 
   FillChar(Frm_Vec, SizeOf(Frm_Vec), 0);
@@ -1141,8 +1167,8 @@ begin
           FillChar(Catalog[I], SizeOf(Catalog[I]), 0);
 {          Catalog[I].User:=0; }
           {$ifdef fpc}
-          Catalog[I].Name:=LeftStr(StdDlg.ExtractFileName(FileName) + '        ', 8);
-          FileExt:=SysUtils.ExtractFileExt(FileName);
+          Catalog[I].Name:=LeftStr({$ifdef unix}UpperCase({$endif}StdDlg.ExtractFileName(FileName){$ifdef unix}){$endif} + '        ', 8);
+          FileExt:={$ifdef unix}UpperCase({$endif}SysUtils.ExtractFileExt(FileName){$ifdef unix}){$endif};
           If FileExt = '' Then
             Catalog[I].Ext:='   '
           else

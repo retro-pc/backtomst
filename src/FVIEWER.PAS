@@ -590,8 +590,27 @@ end;
 
 procedure XDumpStr(var S: String; var B; Addr: Comp; Count: LongInt;
      Filter: Byte);
+{$ifdef CPUX86_64}
+Var
+  C:LongInt;
+  Ch:Char;
+  Arr: array[0..0] of Char absolute B;
+{$endif}
 begin
   S := HexFilePos(Addr)+' ';
+  {$ifdef CPUX86_64}
+  For C:=0 to Count - 1 do
+  Begin
+    Ch:=Arr[C];
+    If Filter <> 0 Then
+    Begin
+      If (Ch < Char($20)) or ((Filter = 1) and (Ch >= Char(128))) Then
+        Ch:=Char(250)
+    End;
+    S[C+11]:=Ch;
+    inc(Byte(S[0]));
+  End;
+  {$else}
   asm
     push ESI
     push EDI
@@ -602,7 +621,7 @@ begin
     mov  EDI, S
     mov  EBX, 11
     mov  AH, Filter
-    jcxz @@3
+    jecxz  @@3
     @@1:
     mov  AL, [ESI]
     or   AH, AH
@@ -629,6 +648,7 @@ begin
     pop  EDI
     pop  ESI
   end;
+  {$endif}
 end { XDumpStr };
 
 { размер поля табуляции }

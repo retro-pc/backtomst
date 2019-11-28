@@ -32,13 +32,14 @@ Type
 
 implementation
 
-Uses App, MSTConst {$ifdef fpc} {$ifndef win32} , Go32 {$endif} {$endif};
+Uses App, MSTConst {$ifdef fpc} {$ifndef win32} {$ifndef unix}, Go32 {$endif} {$endif} {$endif};
 
 type
   TDriveSet   = Set of 'A'..'Z';
 
 {$ifdef fpc}
 {$ifndef win32}
+{$ifndef unix}
 Function DriveValid (Drive : Char) : Boolean;
 Var
   Regs:TRealRegs;
@@ -78,7 +79,7 @@ Begin
 End;
 {$endif}
 {$endif}
-
+{$endif}
 procedure GetValidDrives( var Drives : TDriveSet);
 var
   _Drives:Set Of 0..31;
@@ -94,7 +95,7 @@ begin
   {$else}
   For Ch:='A' to 'Z' do
     If DriveValid(Ch) Then
-      Include(Drives, Ch);     
+      Include(Drives, Ch);
   {$endif}
   {$endif}
 end;

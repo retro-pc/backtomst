@@ -5,7 +5,7 @@
 {  Back to MST                                   }
 {                                                }
 {  Version 1.0                                   }
-{  Copyright (C) MarinovSoft 2013-2018           }
+{  Copyright (C) MarinovSoft 2013-2019           }
 {                                                }
 {  From Kuzbass (Siberia) with Love              }
 {                                                }
@@ -25,13 +25,19 @@
 {$define debug}
 {$endif}
 
+{$ifdef fpc}
+{$define xmlreg}
+{$endif}
+
 Uses App, Objects, Views, Menus, Drivers, Stddlg,
   Msgbox, GrowView, AppWin, Mstconst, MSTDisk, AppWinEx, MstDlg, DosDlg, FV_Const {$ifdef debug}, GadGets {$endif}
 {$ifdef fpc}
 {$ifndef win32}
+{$ifndef unix}
 , Go32
 {$endif}
-, SysUtils
+{$endif}
+, SysUtils{$ifdef xmlreg}, xmlReg {$endif}
 {$else}
 , Service
 {$endif}
@@ -101,7 +107,7 @@ Begin
   + ' (' + linkdate + ')'
   {$endif}
     + #13 +
-    #3'Copyright (C) 2013-2018'#13#3'Маринов Георгий aka MarinovSoft'
+    #3'Copyright (C) 2013-2019'#13#3'Маринов Георгий aka MarinovSoft'
   , Nil, mfInformation Or mfOKButton);
 End;
 
@@ -303,11 +309,11 @@ begin
     else
     begin
       K:=_Frec.Track;
-      If Integer(K) - Integer(SysTrk) < 0 Then
+      If Integer(K) - Integer(dpb.Systrk) < 0 Then
         _Result:=False
       else
       begin
-        K:=((K-Systrk)*5+Sect-1) ShR 1;
+        K:=((K-dpb.Systrk)*5+Sect-1) ShR 1;
         Frm_Vec[K]:=1;
       end;
     end;
@@ -407,7 +413,7 @@ Begin
       GV2^.Update(Track div 4 + 1);
     { Проверить Track}
     If Not VerifyTrack(Frec) Then
-      If Integer(Frec.Track) - Integer(SysTrk) < 0 Then
+      If Integer(Frec.Track) - Integer(dpb.SysTrk) < 0 Then
       Begin
         Rslt:= MessageBox(#3'Error in system track, continue?', Nil, mfError +
           mfYesButton + mfCancelButton);
@@ -423,7 +429,7 @@ Begin
 
   FillChar(Catalog,4096,$E5);
   I:=0;
-  For K:=0 to BlockCount do
+  For K:=0 to Dpb.Dsize do
     If Frm_Vec[K]=1 Then
     begin
       FillChar(Catalog[I ShR 3].Fat[I And 7],16-(I And 7) ShL 1,0);
@@ -439,12 +445,8 @@ Begin
 
     _Dpb:=Dpb;
 
-    _Dpb.Systrk:=Systrk;
-
     MSTDisk^.WriteDir(Catalog);
 
-{    _Dpb.Dsize:=BlockCount-1;}
-    _Dpb.Dsize:=BlockCount;
     _Dpb.TCount:=Frec.TCount;
     _Dpb.Crc:=$66;
     For I:=0 To 30 Do
@@ -704,10 +706,15 @@ Constructor TMSTApplication.Init;
 Var
   B:Byte;
   S:ShortString;
+{$ifdef xmlreg}
+  DataType:TDataType;
+  _DataSize:LongInt;
+  Systrk:DWord;
+{$endif}
 Begin
   Inherited Init;
   DisableCommands([cmFileInfo, cmEditCategories]);
-{  DiskName:='ESL_00.kdi'; }
+
   Frec.Ssize:=3;
   Frec.Gap1:=0;
   Frec.Gap2:=0;
@@ -716,6 +723,20 @@ Begin
   Frec.Side:=0;
   Frec.Track:=0;
   Frec.Interl:=1;
+
+  {$ifdef xmlreg}
+  With TXmlRegistry.Create(ChangeFileExt(ParamStr(0),'.xml')) do
+  Begin
+    If SetKey('/General', false) Then
+    Begin
+      _DataSize:=SizeOf(SysTrk);
+      If GetValueData('SysTrk', DataType, SysTrk, _DataSize) and (DataType = dtDWord) Then
+        dpb.SysTrk:=SysTrk
+    End;
+    Free;
+  End;
+  {$endif}
+
   GetDir(0, S);
   RightWindow:=New(PDOSLongWindow, Init(S{'C:\'}, '*.*'));
 
