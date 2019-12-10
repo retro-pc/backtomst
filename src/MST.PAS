@@ -323,7 +323,6 @@ begin
 end;
 
 Begin
-  FillChar(Frm_Vec,512,0);
   If DiskName[0] = #0 Then
      SelectDriveImage;
   If DiskName[0] > #1 Then
@@ -392,6 +391,7 @@ Begin
     End;
   End;
 
+  FillChar(Frm_Vec,512,0);
   D^.SetCurrentText('Verify disk');
 
   Track:=0; Errc:=0;
@@ -445,7 +445,7 @@ Begin
 
     _Dpb:=Dpb;
 
-    MSTDisk^.WriteDir(Catalog);
+    WriteDir(Catalog);
 
     _Dpb.TCount:=Frec.TCount;
     _Dpb.Crc:=$66;
@@ -458,9 +458,12 @@ Begin
     FillChar(Buf, 1024, $E5);
     Move(_Dpb, Buf, 32);
   End;
-  Frec.Sect:=1;
-  Frec.Track:=0;
-  Errc:=MSTDisk^.WriteSect(Frec,Buf);
+  If MSTDisk^._Dpb.SysTrk > 0 Then
+  Begin
+    Frec.Sect:=1;
+    Frec.Track:=0;
+    Errc:=MSTDisk^.WriteSect(Frec,Buf);
+  End;
   Dispose(MSTDisk, Done);
   Dispose(D,Done);
 End;
@@ -710,6 +713,7 @@ Var
   DataType:TDataType;
   _DataSize:LongInt;
   Systrk:DWord;
+  DSize:DWord;
 {$endif}
 Begin
   Inherited Init;
@@ -731,7 +735,10 @@ Begin
     Begin
       _DataSize:=SizeOf(SysTrk);
       If GetValueData('SysTrk', DataType, SysTrk, _DataSize) and (DataType = dtDWord) Then
-        dpb.SysTrk:=SysTrk
+        dpb.SysTrk:=SysTrk;
+      _DataSize:=SizeOf(DSize);
+      If GetValueData('DSize', DataType, DSize, _DataSize) and (DataType = dtDWord) Then
+        dpb.DSize:=DSize;
     End;
     Free;
   End;

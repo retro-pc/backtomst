@@ -989,27 +989,33 @@ var
   _crc:Byte;
   I:Byte;
 begin
-  _Frec.Track:=0;
-  _Frec.Sect:=1;
 
-  SeekTrack(_Frec);
-  Errc:=ReadSect(_Frec, Buf);
+  if dpb.SysTrk = 0 Then
+    _dpb:=dpb
+  Else
+  Begin
+    _Frec.Track:=0;
+    _Frec.Sect:=1;
 
-  If Errc = 0 Then
-  begin
-    Move(Buf, _dpb, SizeOf(Dpb));
-    _Crc:=$66;
-    For I:=0 To 30 Do
-      {$ifndef fpc}
-      Inc(Mem[Seg(_Dpb):Ofs(_Dpb)+31],Mem[Seg(_Dpb):Ofs(_Dpb)+I]);
-      {$else}
-      Inc(_Crc, PByteArray(@_Dpb)^[I]);
-      {$endif}
-    If _Crc <> _Dpb.Crc Then
+    SeekTrack(_Frec);
+    Errc:=ReadSect(_Frec, Buf);
+
+    If Errc = 0 Then
+    begin
+      Move(Buf, _dpb, SizeOf(Dpb));
+      _Crc:=$66;
+      For I:=0 To 30 Do
+        {$ifndef fpc}
+        Inc(Mem[Seg(_Dpb):Ofs(_Dpb)+31],Mem[Seg(_Dpb):Ofs(_Dpb)+I]);
+        {$else}
+        Inc(_Crc, PByteArray(@_Dpb)^[I]);
+        {$endif}
+      If _Crc <> _Dpb.Crc Then
+        _dpb:=dpb;
+    end
+    else
       _dpb:=dpb;
-  end
-  else
-    _dpb:=dpb;
+  End;
 
 end;
 
