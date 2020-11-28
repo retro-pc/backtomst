@@ -107,7 +107,7 @@ Begin
   + ' (' + linkdate + ')'
   {$endif}
     + #13 +
-    #3'Copyright (C) 2013-2019'#13#3'Маринов Георгий aka MarinovSoft'
+    #3'Copyright (C) 2013-2020'#13#3'Маринов Георгий aka MarinovSoft'
   , Nil, mfInformation Or mfOKButton);
 End;
 

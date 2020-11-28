@@ -306,11 +306,10 @@ begin
           S.Name:= strupr(S.Name);
           {$endif}
           S.User:= Catalog[I].User;
-          if (TMSTSearchRec(FileList^.At(J)^).Name = S.Name) And (TMSTSearchRec(FileList^.At(J)^).User = S.User) Then
+          if (TMSTSearchRec(P^).Name = S.Name) And (TMSTSearchRec(P^).User = S.User) Then
           begin
 {             S.Size:= LongInt(Catalog[I].Recs) * 128 + LongInt(Catalog[I].Re0);}
             S.Size:= LongInt(Catalog[I].Recs) shl $07 + LongInt(Catalog[I].Re0);
-            P:= FileList^.At(J);
             P^.Size:=P^.Size + S.Size;
           end;
         end;
@@ -1063,7 +1062,7 @@ begin
   {$ifdef unix}
   If Self.FileExists(UpperCase(LeftStr(StdDlg.ExtractFileName(FileName), 8) + SysUtils.ExtractFileExt(FileName)), 0) Then
   {$else}
-  If Self.FileExists(LeftStr(StdDlg.ExtractFileName(FileName), 8) + SysUtils.ExtractFileExt(FileName), 0) Then
+  If Self.FileExists(LeftStr(StdDlg.ExtractFileName(FileName), 8) + LeftStr(SysUtils.ExtractFileExt(FileName), 4), 0) Then
   {$endif}
   Begin
     MessageBox('File'#13 + LeftStr(StdDlg.ExtractFileName(FileName), 8) +
@@ -1391,7 +1390,7 @@ begin
     Catalog[I].Ext[1]:=Char(Byte(Catalog[I].Ext[1]) And $7F);
     Catalog[I].Ext[2]:=Char(Byte(Catalog[I].Ext[2]) And $7F);
     {$Ifdef fpc}
-    If (Catalog[I].User = User) and ((Trim(Catalog[I].Name) + '.' + Trim(Catalog[I].Ext)) = FileName) Then
+    If (Catalog[I].User = User) and (Trim(Catalog[I].Name) = StdDlg.ExtractFileName(FileName)) and (Trim(Catalog[I].Ext) = Trim(Copy(SysUtils.ExtractFileExt(FileName) + '   ', 2, 3))) Then
     {$Else}
     If (Catalog[I].User = User) and (((Catalog[I].Name) + '.' + (Catalog[I].Ext)) = FileName) Then { TODO BP }
     {$Endif}
